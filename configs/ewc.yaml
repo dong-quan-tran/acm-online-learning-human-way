@@ -1,0 +1,7 @@
+seed: 42
+batch_size: 128
+epochs: 10
+learning_rate: 0.001
+optimizer: adam
+num_classes: 100
+ewc_lambdas: [0, 10, 100, 1000]

@@ -1,1 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
 
+# Environment and secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Dataset and generated outputs
+cifar-100-python/
+data/raw/
+data/processed/
+checkpoints/*.pt
+checkpoints/*.pth
+results/*.csv
+results/figures/*.png
+
+# OS and editor files
+.DS_Store
+.vscode/
+.idea/
