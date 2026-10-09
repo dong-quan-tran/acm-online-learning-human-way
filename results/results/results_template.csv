@@ -1,1 +1,0 @@
-method,seed,batch_size,epochs,learning_rate,optimizer,task_1_acc_after_task_1,task_1_acc_after_task_2,task_2_acc_after_task_2,task_1_forgetting,lambda
