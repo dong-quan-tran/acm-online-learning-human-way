@@ -1,550 +1,452 @@
-﻿# Two-Week Assignment: Foundation for the Semester Project
+# Week 2 Assignment: Move to Online Learning
 
-**Project:** Online Learning – The Human Way  
-**Dataset:** CIFAR-100  
-**Duration:** Two weeks  
-**Main focus:** Catastrophic forgetting and Elastic Weight Consolidation (EWC)
+Updated: October 12, 2026  
+Duration: One week
 
 ## Goal
 
-During these two weeks, we will build a small and reproducible continual-learning experiment using CIFAR-100.
+Build on Week 1's work and adapt the project to Dr. Athitsos's suggested
+online-learning setting.
 
-The required experiment is:
+Instead of training separate class groups one after another, we will mix
+the selected classes and update the model as small batches arrive.
 
-1. Train a model on Task 1, which contains classes 0–9.
-2. Test its Task 1 accuracy.
-3. Continue training the same model on Task 2, which contains classes 10–19.
-4. Test Task 1 and Task 2 again.
-5. Measure whether the model forgot Task 1.
-6. Add standard EWC and compare it with the normal baseline.
+This week's required result is one working 20-class online run, with tests,
+a results CSV, and an accuracy-over-time plot.
 
-The goal is not to implement EWC-DR yet. EWC-DR is an optional future extension after the normal baseline and standard EWC experiment are working correctly.
+Keep Week 1 contributions. Reuse and adapt them rather than starting over.
 
-## Semester Connection
+## What Changes
 
-This two-week assignment builds the foundation for the rest of the semester project.
+| Previous plan | New plan |
+|---|---|
+| Train classes 0–9, then classes 10–19 | Mix classes 0–19 before training |
+| Separate Task 1 and Task 2 stages | One continuous stream |
+| Train repeatedly on each task | One pass through the mixed stream |
+| Measure Task 1 forgetting | Measure accuracy as examples are processed |
+| Implement EWC and Fisher estimation | Use cross-entropy; defer EWC |
 
-By the end of these two weeks, we should have:
+The same class set remains available throughout the stream.
+We are no longer using separate class-incremental training stages.
 
-- A shared and organized GitHub repository
-- A verified CIFAR-100 task split
-- A normal sequential-learning baseline
-- A standard EWC implementation
-- First baseline-versus-EWC results
-- CSV result files and plots
-- Documentation that can later be used in the final report and poster
-
-After this assignment, we can expand from two tasks to more CIFAR-100 tasks, repeat experiments with multiple seeds, analyze the results, and prepare final deliverables.
+Dr. Athitsos suggested the fixed-distribution, random-order setting.
+Our detailed experiment choices still need his confirmation.
 
 ## Shared Settings
 
-| Item | Required Setting |
+| Item | Setting |
 |---|---|
-| Framework | Python and PyTorch |
-| Dataset | CIFAR-100 |
-| Model | One shared small CNN with 100 output classes |
-| Learning setting | Class-incremental continual learning |
-| Full task split | 10 tasks with 10 classes each |
-| Current experiment | Task 1 and Task 2 only |
-| Task 1 | Class IDs 0–9 |
-| Task 2 | Class IDs 10–19 |
-| Baseline | Standard cross-entropy loss only |
-| EWC | Cross-entropy loss plus EWC penalty |
-| Initial random seed | 42 |
-| Required metrics | Per-task accuracy and Task 1 forgetting |
+| Dataset | CIFAR-100, fine labels |
+| Required run | Classes 0–19, mixed together |
+| Model | Nguyen's SmallResNet with 100 outputs |
+| Labels | Original CIFAR-100 class IDs |
+| Starting weights | Random initialization |
+| Data order | Combine training examples, then shuffle once |
+| Batch size | 32, including the final smaller batch |
+| Training | One update per batch, one pass |
+| Loss | Cross-entropy |
+| Replay | None |
+| Initial seed | 42 |
 
-The baseline and EWC runs must use the same model, task split, image transforms, seed, optimizer, number of epochs, batch size, and learning rate. Only the EWC penalty and lambda value may differ.
+Keep the same model and optimizer throughout the stream.
+Do not restart between batches, expand the classifier, or replay old batches.
 
----
+Model and optimizer state may be kept between updates.
 
-# Week 1 — Baseline and Reproducible Setup
+Before running experiments, agree on:
+- Validation size and split seed.
+- Image transforms and normalization.
+- Optimizer and learning rate.
+- Scheduler, if used.
+- Model and stream-order seeds.
 
-## Week 1 Goal
+Record these settings in `configs/online.yaml`.
+Use `experiment_protocol.md` for the shared rules.
 
-By the end of Week 1, the team must have a normal CNN that:
+## Scope for This Week
 
-1. Trains on Task 1.
-2. Is tested on Task 1.
-3. Continues training on Task 2.
-4. Is tested on both Task 1 and Task 2.
-5. Saves checkpoints, results, and a forgetting plot.
+Required:
+- Adapt the existing data and model code.
+- Complete one 20-class single-pass run.
+- Verify data separation and evaluation.
+- Save results and a real learning curve.
+- Document commands another member can run.
 
-This gives us the baseline evidence of catastrophic forgetting.
+Stretch goals:
+- Expand to all 100 classes.
+- Repeat with more seeds.
+- Compare with multiple-pass offline training.
 
-## Tuong — EWC Research Notes and Method Plan
+Do not delay the required small run to complete stretch goals.
 
-### Purpose
+# Team Tasks
 
-Create a simple guide that explains EWC before the team implements it in Week 2. This guide can later be used for the background and methods sections of the final report.
+## Tuong — Explain the New Setting and Review the Method
+
+### Build on Week 1
+
+Keep your EWC guide as background. It remains useful work, but EWC is not
+this week's required method.
 
 ### Tasks
 
-1. Create `docs/ewc_guide.md`.
-2. Explain catastrophic forgetting in simple words.
-3. Explain why normal sequential training can hurt performance on older tasks.
-4. Explain standard EWC in simple words:
-   - Train on Task 1.
-   - Save the model weights after Task 1.
-   - Estimate which weights are important for Task 1.
-   - During Task 2, discourage important weights from changing too much.
-5. Include and explain this EWC equation:
+1. Write `docs/online_learning_guide.md` using simple words.
+2. Explain:
+   - How learning from incoming batches works.
+   - Why classes are mixed instead of separated into tasks.
+   - What one pass and no replay mean.
+   - How this differs from repeatedly training on the whole dataset.
+   - Why learning progress replaces forgetting as the main focus.
+3. Include this flow:
 
 ```text
-total_loss = new_task_loss + (lambda / 2) * sum(F_i * (theta_i - theta_star_i)^2)
+Receive labeled batch
+→ Update the model once
+→ Move to the next batch
+→ Check held-out accuracy at recorded intervals
 ```
 
-6. Explain the meaning of:
-   - `new_task_loss`: normal classification loss for the current task.
-   - `theta_star_i`: saved value of a weight after Task 1.
-   - `F_i`: importance of that weight for Task 1.
-   - `lambda`: how strongly EWC protects old knowledge.
-7. Add a simple EWC flow diagram:
+4. Add a short note to the EWC guide saying it is background for possible
+   future work.
+5. Review the protocol and Nguyen's training changes.
+6. Check that:
+   - There are no separate class-based training stages.
+   - The classifier is fixed throughout the run.
+   - Training makes one pass without replay.
+   - Validation and test examples are not used for training.
+   - Evaluation does not change the model.
+7. Help Alka explain the results and limits clearly.
 
-```text
-Train Task 1
-→ Save Task 1 model weights
-→ Calculate importance values
-→ Train Task 2 with EWC penalty
-→ Test Task 1 and Task 2
-```
+### Submit
 
-8. Add a short EWC versus EWC-DR comparison table.
-9. Explain why this project will implement standard EWC first and treat EWC-DR as a possible later extension.
-10. Cite the original EWC paper and the EWC-DR paper.
+- Short online-learning guide.
+- EWC status note.
+- Review comments on the protocol or training pull request.
+- Any unresolved method questions.
 
-### Deliverables
+### Done When
 
-- `docs/ewc_guide.md`
-- EWC flow diagram
-- EWC versus EWC-DR comparison table
-- Paper references
+The team can understand the new setting, and problems found during review
+are clearly recorded.
 
-### Progress Evidence
+## Khoi — Adapt the Existing Data Loader
 
-- Midweek: first draft committed or shared through a pull request.
-- End of Week 1: completed guide merged into `main`.
+### Build on Week 1
 
----
-
-## Khoi — CIFAR-100 Data Pipeline and Task Split
-
-### Purpose
-
-Build the shared CIFAR-100 data loader and fixed task split. Every experiment must use the same split so results are fair and reproducible.
+Reuse `src/data.py`, the dataset download, and class filtering.
+Keep useful subset functions, but do not use them as separate training stages.
 
 ### Tasks
 
-1. Create `src/data.py`.
-2. Load CIFAR-100 with Torchvision.
-3. Download CIFAR-100 automatically if it is missing.
-4. Create functions similar to:
+1. Select classes 0–19 and combine their examples before shuffling.
+2. Keep original class IDs. Do not remap each group separately.
+3. Reserve validation examples from the training split before creating the stream.
+4. Record the validation split seed and sample membership.
+5. Provide separate training, validation, and test loaders.
+6. Make the training order repeatable with a recorded stream seed.
+7. Include every selected training example once, including the final smaller batch.
+8. Do not oversample classes or require every batch to contain every class.
+9. Agree on the loader interface with Nguyen before integrating.
+10. Agree on image transforms and normalization:
+    - Nguyen's model already normalizes its inputs.
+    - Do not apply the same normalization again in the loader.
+    - Keep input type and scaling consistent.
+11. Print a short setup summary:
+    - Selected classes.
+    - Examples per split.
+    - Batch size and number of training batches.
+    - Split and stream seeds.
+12. Document the dataset package and cache location.
 
-```python
-get_task_dataset(task_id, split="train")
-get_task_dataset(task_id, split="test")
-```
+### Tests
 
-5. Use this fixed task split:
+Check:
+- Only selected class labels appear.
+- Image tensors have the expected shape, type, and scaling.
+- Training, validation, and test examples do not overlap.
+- Every training example appears exactly once.
+- The final smaller batch is included.
+- The same seed produces the same order.
+- Different seeds produce different orders.
 
-| Task | Class IDs |
-|---|---|
-| Task 1 | 0–9 |
-| Task 2 | 10–19 |
-| Task 3 | 20–29 |
-| Task 4 | 30–39 |
-| Task 5 | 40–49 |
-| Task 6 | 50–59 |
-| Task 7 | 60–69 |
-| Task 8 | 70–79 |
-| Task 9 | 80–89 |
-| Task 10 | 90–99 |
+Use sample identities to check coverage and overlap, not labels alone.
 
-6. Use `data/task_split.json` as the saved record of this split.
-7. Print the class IDs, class names, and image counts for Task 1 and Task 2.
-8. Save one image grid for Task 1 and one image grid for Task 2.
-9. Create `tests/test_task_split.py`.
-10. The test must verify:
-   - Task 1 contains only labels 0–9.
-   - Task 2 contains only labels 10–19.
-   - Task 1 and Task 2 do not overlap.
-11. Add short data setup instructions to the README.
+### Submit
 
-### Deliverables
+- Updated data loader.
+- Data and split tests.
+- Test output.
+- Short data setup instructions.
 
-- `src/data.py`
-- `tests/test_task_split.py`
-- Updated `data/task_split.json` if needed
-- `results/figures/task1_samples.png`
-- `results/figures/task2_samples.png`
-- README data instructions
+### Done When
 
-### Progress Evidence
+Nguyen can use the mixed stream directly, and tests verify labels,
+coverage, split separation, and repeatable order.
 
-- Midweek: show Task 1 and Task 2 class names, labels, sample counts, and one sample-image grid.
-- End of Week 1: another team member can load both tasks successfully.
+## Nguyen — Adapt the Week 1 Model and Training Code
 
----
+### Build on Week 1
 
-## Nguyen — Baseline CNN and Sequential Training
+Your notebook already includes:
+- SmallResNet.
+- Image transforms and seed settings.
+- Training and evaluation functions.
+- Completed Task 1 and Task 2 runs.
+- Saved checkpoints and diagnostic plots.
 
-### Purpose
+Keep the notebook as the record of the earlier experiment.
+Adapt its reusable parts for this week's online run.
 
-Create the normal sequential-learning baseline. This baseline will be compared against EWC in Week 2 and later in the final report.
+### 1. Move Reusable Code into the Repo
+
+- Put SmallResNet and its supporting layers in `src/model.py`.
+- Put shared evaluation code in `src/evaluate.py`.
+- Create `src/train_online.py`.
+- Replace the hard-coded Kaggle path with a project-relative path.
+- Bring the submitted code into the shared repo if it is not already there.
+- Do not commit downloaded images or checkpoints.
+
+### 2. Use One Fixed Model
+
+- Initialize `SmallResNet(num_classes=100)` once.
+- Keep original CIFAR-100 labels.
+- Do not call `expand_head()`.
+- Do not restart the model or optimizer between class groups.
+- Train from scratch rather than loading the old task-trained checkpoints.
+
+The required run uses classes 0–19 while retaining the planned 100-output head.
+
+### 3. Connect to Khoi's Loader
+
+- Use the shared mixed-class loader.
+- Remove the separate `TASKS = [1, 2]` training sequence.
+- Avoid keeping a second data pipeline inside the training script.
+- Agree with Khoi on transforms, input scaling, and normalization.
+
+### 4. Replace Repeated Task Training
+
+The old notebook trains each task for 50 epochs.
+
+For this run:
+- Use batch size 32.
+- Process the mixed training stream once.
+- Apply one cross-entropy update per batch.
+- Keep the final smaller batch.
+- Count training examples and optimizer updates.
+- Do not replay earlier examples.
+
+Reuse the batch-update logic where possible.
+
+Initialize the optimizer once. If keeping OneCycleLR, use the number of
+batches in the single pass as its total steps, not 50 epochs.
+Record all optimizer and scheduler settings.
+
+### 5. Update Evaluation
+
+Reuse the evaluation function with these changes:
+- Evaluate on the combined validation subset.
+- Do not use task-specific prediction masks.
+- Evaluate before training, about every 1,000 examples, and at the end.
+- If a batch crosses a threshold, evaluate after that batch and record
+  the actual example count.
+- Disable gradients and use evaluation mode.
+- Verify that weights and BatchNorm statistics do not change.
+- Restore training mode before continuing.
+
+Replace task-accuracy tables and forgetting calculations with
+accuracy-versus-examples records.
+
+Keep official test data out of development and tuning.
+
+### 6. Save Results and Run Details
+
+- Write `results/online_results.csv` using the shared format below.
+- Coordinate with Alka so her plotter reads it directly.
+- Save the configuration, seeds, package versions, device, and exact command.
+- Update checkpoint metadata to describe shuffled online learning.
+- Do not retain the old `domain-incremental` metadata label.
+- Keep checkpoints local.
+
+### Tests
+
+Check:
+- The model returns 100 scores per image.
+- A small batch completes a training update.
+- Training stops after one pass.
+- Example and update counters match the stream.
+- Evaluation leaves weights and running statistics unchanged.
+- The results CSV contains valid checkpoint records.
+
+### Submit
+
+- Model and shared evaluation files.
+- Online training script and configuration.
+- Test output.
+- One completed 20-class online run.
+- Results CSV and exact run command.
+
+### Done When
+
+Another member can run the experiment from the repo without editing the notebook.
+
+## Alka — Adapt Plots, Results, and Documentation
+
+### Build on Week 1
+
+Reuse your result template and plotting code.
+Review Nguyen's notebook plots with him and reuse useful pieces rather
+than creating duplicate plotting tools.
 
 ### Tasks
 
-1. Create `src/model.py`.
-2. Build a small CNN with 100 output classes.
-3. Create `src/train_baseline.py`.
-4. Include settings for:
-   - Random seed
-   - Number of epochs
-   - Batch size
-   - Learning rate
-   - Device: CPU or GPU
-5. Train the model on Task 1.
-6. After Task 1 training:
-   - Evaluate on Task 1 test data.
-   - Save `checkpoints/baseline_after_task1.pt`.
-   - Save the Task 1 result.
-7. Continue training the same model on Task 2.
-8. Do not restart the model.
-9. Do not use Task 1 images while training on Task 2.
-10. Do not use replay, EWC, or any forgetting-prevention method during the baseline.
-11. After Task 2 training:
-   - Evaluate on Task 1 test data.
-   - Evaluate on Task 2 test data.
-   - Save `checkpoints/baseline_after_task2.pt`.
-12. Save results to `results/baseline_results.csv`.
+1. Agree on the shared CSV format with Nguyen.
+2. Update `results/results_template.csv`.
+3. Update `src/plot_results.py` to read `results/online_results.csv`.
+4. Replace task-based plots with:
+   - X-axis: training examples processed.
+   - Y-axis: validation accuracy.
+5. Save the plot as `results/figures/online_learning_curve.png`.
+6. Label the run, class count, and evaluation split clearly.
+7. Handle missing files, empty results, and invalid values with clear messages.
+8. Test with synthetic results while waiting for the real run.
+   Label synthetic output as an example, not an experiment finding.
+9. Update the protocol and checklist to remove required Task 1 → Task 2,
+   EWC, and Fisher work.
+10. Check setup and run commands with Khoi and Nguyen.
+11. Write `docs/week2_results_summary.md` with:
+    - What changed from Week 1.
+    - Settings used.
+    - Observed accuracy and training time.
+    - Errors or unfinished work.
+    - Next steps.
+12. Keep old results clearly labeled as the earlier class-incremental experiment.
+    Do not compare them directly with the new run without explaining the
+    different training settings.
 
-Use this format:
+### Submit
+
+- Updated result template and plotter.
+- Plotting checks.
+- Real learning curve.
+- Short results summary.
+- Updated checklist and run instructions.
+
+### Done When
+
+The plotter reads Nguyen's CSV without manual edits, and the summary
+matches the saved results.
+
+## Dong Quan Tran — Coordinate and Integrate
+
+### Tasks
+
+1. Confirm the detailed setting with Dr. Athitsos.
+2. Record any changes he requests.
+3. Make sure Week 1 submissions are available to everyone.
+4. Settle shared interfaces, settings, and result format early.
+5. Review pull requests and test evidence before merging.
+6. Keep the README, protocol, direction document, and assignment consistent.
+7. Mark older task-based instructions as historical.
+8. Preserve completed contributions and avoid duplicate work.
+9. Coordinate the integrated run and a fresh-checkout reproduction check.
+10. Track blockers and arrange help.
+11. Summarize effort, follow-through, and remaining work honestly.
+
+### Submit
+
+- Recorded protocol status and agreed settings.
+- Integration review and test evidence.
+- Short team update.
+
+# Shared Results Format
+
+Save results to `results/online_results.csv`:
 
 ```csv
-method,lambda,trained_through_task,evaluated_task,accuracy,seed,epochs,batch_size,learning_rate
-baseline,0,1,1,,,,,
-baseline,0,2,1,,,,,
-baseline,0,2,2,,,,,
+mode,run_id,model_seed,stream_seed,num_classes,examples_processed,updates,passes,batch_size,learning_rate,optimizer,eval_split,accuracy,training_seconds
 ```
 
-### Deliverables
+Rules:
+- One row per evaluation checkpoint.
+- Use `online` for mode.
+- Use `validation` for development evaluation.
+- Accuracy is a decimal from 0 to 1.
+- Count only training examples in `examples_processed`.
+- `updates` counts optimizer steps.
+- `passes` records the fraction of the training stream completed, ending at 1.
+- `training_seconds` excludes evaluation time.
+- Link each run to its saved configuration.
 
-- `src/model.py`
-- `src/train_baseline.py`
-- `checkpoints/baseline_after_task1.pt`
-- `checkpoints/baseline_after_task2.pt`
-- `results/baseline_results.csv`
-- README commands for running the baseline
+Record memory use separately if measured, including the measurement method.
 
-### Progress Evidence
+# Order of Work
 
-- Midweek: show a successful Task 1 training and evaluation run.
-- End of Week 1: submit the three required accuracy values and checkpoints.
+## Early Week
 
----
+- Agree on settings and interfaces.
+- Khoi adapts the stream.
+- Nguyen moves reusable notebook code into the repo.
+- Alka updates the CSV format and tests plotting.
+- Tuong reviews the explanation and protocol.
 
-## Alka — Experiment Documentation, Results Format, and Baseline Plot
+## Midweek
 
-### Purpose
+- Complete a short integrated run.
+- Check data separation, counters, evaluation, and CSV output.
+- Report blockers before starting the full required run.
 
-Make the project understandable, reproducible, and easy to present later in a report or poster.
+## End of Week
 
-### Tasks
+- Finish the 20-class single-pass run.
+- Generate the real learning curve.
+- Have another member run the documented commands.
+- Submit the summary and list remaining problems.
 
-1. Update `docs/experiment_protocol.md`.
-2. Make sure it documents:
-   - Research question
-   - CIFAR-100 dataset
-   - Task split
-   - Model
-   - Training order
-   - Baseline definition
-   - Metrics
-   - Random seed
-   - Hyperparameters
-   - Saved outputs after each task
-3. Review and update `results/results_template.csv` if necessary.
-4. Create `src/plot_results.py`.
-5. Create a baseline plot with:
-   - Task 1 accuracy after Task 1 training.
-   - Task 1 accuracy after Task 2 training.
-   - Task 2 accuracy after Task 2 training.
-6. Save the plot as `results/figures/baseline_forgetting.png`.
-7. Add this short explanation to the result summary:
+# Stretch Goals
 
-> If Task 1 accuracy drops after Task 2 training, the baseline model has forgotten part of Task 1. EWC will attempt to reduce that drop.
+Only after the required work is complete:
+- Expand to all 100 classes.
+- Repeat with additional recorded seeds.
+- Add a multiple-pass offline comparison.
 
-8. Update `docs/week1_checklist.md`.
-9. Review the team files before the Week 1 meeting.
+For an offline comparison, keep the model, data splits, and transforms the same.
+Report extra passes, updates, and time. Do not call it an equal-budget comparison.
 
-### Deliverables
+EWC and Fisher estimation remain deferred.
 
-- Updated `docs/experiment_protocol.md`
-- Updated `results/results_template.csv`
-- `src/plot_results.py`
-- `results/figures/baseline_forgetting.png`
-- Updated `docs/week1_checklist.md`
+# Progress Updates
 
-### Progress Evidence
-
-- Midweek: submit an updated protocol and result-file format.
-- End of Week 1: submit the completed baseline plot and checklist.
-
----
-
-# Week 2 — Standard EWC and First Comparison
-
-## Week 2 Goal
-
-By the end of Week 2, the team must have a working standard EWC experiment and a fair comparison against normal sequential training.
-
-We are not implementing EWC-DR this week. It stays as a possible future extension after the baseline and standard EWC experiments are stable.
-
-## Tuong — Fisher Importance Guide and EWC Review
-
-### Purpose
-
-Document how EWC estimates which model weights are important for Task 1 and review the EWC implementation for correctness.
-
-### Tasks
-
-1. Create `docs/fisher_guide.md`.
-2. Explain the diagonal Fisher approximation in simple words:
-
-> Each model weight receives one importance score. A larger score means changing that weight may hurt Task 1 performance more.
-
-3. Document the Fisher estimation process:
+Post a short midweek and end-of-week update:
 
 ```text
-Load model after Task 1
-Load Task 1 training data
-For each batch:
-    Make predictions
-    Calculate classification loss
-    Run backpropagation
-    Square each parameter gradient
-    Add squared gradients to the importance estimate
-Average the values at the end
-```
-
-4. Explain why model weights should not be changed while Fisher values are calculated.
-5. Add these verification checks:
-   - Each Fisher tensor has the same shape as its matching model parameter.
-   - Fisher values are non-negative.
-   - Task 1 data is used for Fisher estimation.
-   - Task 2 data is not used for Fisher estimation.
-6. Review the EWC code pull request and confirm that the code matches the standard EWC equation.
-
-### Deliverables
-
-- `docs/fisher_guide.md`
-- Fisher verification checklist
-- Pull-request review comments on EWC code
-
-### Progress Evidence
-
-- Midweek: Fisher guide draft committed or submitted as a pull request.
-- End of Week 2: confirmation that EWC and Fisher calculations follow the documented method.
-
----
-
-## Khoi — Fisher Data Loader and Reproducibility Checks
-
-### Purpose
-
-Make sure Task 1 data is used correctly for Fisher estimation while staying separate from Task 2 training.
-
-### Tasks
-
-1. Add a function similar to this in `src/data.py`:
-
-```python
-get_fisher_loader(task_id=0)
-```
-
-2. The Fisher loader must use Task 1 data only.
-3. Confirm Task 1 images are not included in Task 2 training batches.
-4. Extend data tests to verify:
-   - Fisher loader labels are only 0–9.
-   - Task 2 loader labels are only 10–19.
-   - Fisher loader and Task 2 loader are separate.
-5. Help run a small end-to-end EWC test:
-   - One epoch on Task 1.
-   - Calculate Fisher values.
-   - One epoch on Task 2 with EWC.
-6. Update README instructions for the data setup and EWC run.
-
-### Deliverables
-
-- Updated `src/data.py`
-- Updated loader tests
-- README reproducibility instructions
-- Evidence that the small EWC test completed
-
-### Progress Evidence
-
-- Midweek: test output showing the Fisher loader uses only Task 1 labels.
-- End of Week 2: a fresh clone can download data and complete the small test pipeline.
-
----
-
-## Nguyen — Standard EWC Training and Lambda Experiments
-
-### Purpose
-
-Implement standard EWC using the shared CNN, task split, and training settings.
-
-### Tasks
-
-1. Create `src/fisher.py`.
-2. After Task 1 training:
-   - Save the Task 1 model parameters as `theta_star`.
-   - Calculate Fisher importance values.
-   - Save both items for use during Task 2 training.
-3. Create `src/train_ewc.py`.
-4. Use the same model and Task 1 training settings as the baseline.
-5. Train Task 2 with this loss:
-
-```text
-total_loss = cross_entropy_loss + (lambda / 2) * sum(F_i * (theta_i - theta_star_i)^2)
-```
-
-6. Add an `--ewc_lambda` option.
-7. Run these lambda values:
-
-```text
-0
-10
-100
-1000
-```
-
-8. `lambda = 0` should act similarly to the baseline and is a useful debugging check.
-9. For each lambda, save:
-   - Task 1 accuracy after Task 2.
-   - Task 2 accuracy after Task 2.
-10. Save all results to `results/ewc_results.csv`.
-11. Save the best balanced EWC checkpoint.
-
-Use this format:
-
-```csv
-method,lambda,trained_through_task,evaluated_task,accuracy,seed,epochs,batch_size,learning_rate
-ewc,0,2,1,,,,,
-ewc,0,2,2,,,,,
-ewc,10,2,1,,,,,
-ewc,10,2,2,,,,,
-ewc,100,2,1,,,,,
-ewc,100,2,2,,,,,
-ewc,1000,2,1,,,,,
-ewc,1000,2,2,,,,,
-```
-
-### Deliverables
-
-- `src/fisher.py`
-- `src/train_ewc.py`
-- `results/ewc_results.csv`
-- EWC checkpoints
-- README commands for running EWC
-
-### Progress Evidence
-
-- Midweek: complete one small EWC test run.
-- End of Week 2: submit all required lambda results and checkpoints.
-
----
-
-## Alka — Baseline versus EWC Results and Documentation
-
-### Purpose
-
-Turn experiment output into plots, tables, and documentation that can later be used in the report and poster.
-
-### Tasks
-
-1. Update `src/plot_results.py` so it reads:
-   - `results/baseline_results.csv`
-   - `results/ewc_results.csv`
-2. Create these plots:
-   - Baseline Task 1 accuracy before and after Task 2.
-   - Baseline versus EWC Task 1 accuracy after Task 2.
-   - EWC lambda versus Task 1 and Task 2 accuracy.
-3. Save plots in `results/figures/`.
-4. Create `docs/week2_results_summary.md`.
-5. Include:
-   - Best baseline result.
-   - Best EWC result.
-   - Lambda with the best Task 1 retention.
-   - Whether that lambda lowered Task 2 accuracy.
-   - Errors, limitations, or unexpected behavior.
-6. Update `docs/decisions.md` with:
-   - Why CIFAR-100 was chosen.
-   - Why the first experiment uses two tasks.
-   - Why EWC-DR is postponed.
-   - Which EWC lambda values were tested.
-7. Review the README so another student can reproduce a baseline and EWC run.
-
-### Deliverables
-
-- `results/figures/baseline_vs_ewc.png`
-- `results/figures/lambda_tradeoff.png`
-- `docs/week2_results_summary.md`
-- Updated `docs/decisions.md`
-- Updated README
-- `docs/week2_checklist.md`
-
-### Progress Evidence
-
-- Midweek: draft comparison-plot script.
-- End of Week 2: completed plots and a one-page result summary.
-
----
-
-# Required Progress Updates
-
-Each member must post one progress update around the middle of each week and another at the end of each week.
-
-Use this format:
-
-```text
-Name:
-Week:
 Completed:
-Evidence: GitHub pull request, commit, file path, screenshot, plot, or output
+Evidence:
 Blocker:
 Next step:
 ```
 
-A message such as “I am working on it” is not enough. Every update should include evidence of progress.
+Evidence can include commits, test output, run logs, screenshots, shared drafts,
+or review comments.
 
-# End-of-Assignment Checklist
+Raise blockers early. Asking for help, reviewing work, and correcting mistakes
+count as useful progress.
 
-```text
-[ ] CIFAR-100 downloads automatically.
-[ ] Task 1 and Task 2 splits are verified.
-[ ] Data tests pass.
-[ ] Baseline CNN completes Task 1 → Task 2.
-[ ] Baseline results and forgetting plot are saved.
-[ ] Task 1 model parameters are saved.
-[ ] Fisher values are calculated and checked.
-[ ] Standard EWC completes Task 1 → Task 2.
-[ ] Multiple lambda values are tested.
-[ ] Baseline and EWC results are stored in CSV files.
-[ ] Baseline and EWC comparison plots are saved.
-[ ] README includes setup and run commands.
-[ ] Documentation explains the experiment and EWC method.
-[ ] No dataset files, checkpoints, secrets, or virtual environments are committed.
-```
+Ratings prioritize effort, commitment, communication, teamwork, and follow-through.
+Accuracy and GitHub activity alone do not determine a rating.
 
-# What Happens After These Two Weeks
+# End-of-Week Checklist
 
-After this assignment is complete, the team will:
+- [ ] Week 1 work is preserved and available.
+- [ ] Protocol status and shared settings are recorded.
+- [ ] Classes 0–19 are combined before shuffling.
+- [ ] Each training example appears once, with no dropped final batch.
+- [ ] Training, validation, and test examples are separate.
+- [ ] The classifier stays fixed throughout the run.
+- [ ] Training uses one pass with no replay.
+- [ ] Evaluation leaves the model unchanged.
+- [ ] Data, training, evaluation, and plotting checks pass.
+- [ ] Results CSV and real learning curve are saved.
+- [ ] Another member can run the documented commands.
+- [ ] The summary lists actual results and unfinished work.
 
-1. Expand the stable experiment from two tasks to more CIFAR-100 tasks.
-2. Repeat final baseline and EWC experiments with multiple random seeds.
-3. Report average accuracy, forgetting, runtime, and the retention-versus-new-task tradeoff.
-4. Write the final technical report.
-5. Finalize research notes and reproducibility instructions.
-6. Create a poster or presentation using actual experiment results and plots.
-
-Our main final deliverable is a controlled and reproducible comparison between normal sequential training and standard EWC. EWC-DR is optional future work only if the required experiments are complete.
+Do not commit dataset images, checkpoints, secrets, or virtual environments.
