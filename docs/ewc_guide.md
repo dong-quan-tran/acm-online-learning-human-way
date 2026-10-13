@@ -5,12 +5,14 @@
 **Deliverable:** Week 1 Research Guide & Implementation Plan  
 **Context:** CIFAR-100 Continual Learning (Task 1: classes 0–9, Task 2: classes 10–19)
 
+> **Week 2 Status Note (October 12, 2026):** Following Dr. Athitsos's guidance, our project has shifted its immediate focus to **shuffled single-pass online learning** (see `docs/online_learning_guide.md` and `docs/online_learning_direction.md`). Standard EWC, Fisher estimation, and sequential task-based training are **not required for Week 2** and are preserved in this document as **background reference for possible future work**.
+
 ---
 
 ## 1. Introduction & Purpose
 
 This guide provides the foundational theory, algorithmic workflow, mathematical formulation, and experimental rationale for **Elastic Weight Consolidation (EWC)**. It serves as:
-1. An onboarding document for the team before implementing standard EWC in Week 2.
+1. Background reference for the team on continual learning and weight consolidation for possible future extensions.
 2. A formal methods reference for our semester technical report and poster.
 3. A clear comparison between canonical EWC and recent advances such as **EWC-DR (EWC Done Right)**.
 
@@ -206,7 +208,9 @@ When the network is confident in class $c$ ($z_c \gg z_{j}$), $\tilde{p}_c$ beco
 
 ## 8. Why Implement Standard EWC First?
 
-Our project explicitly mandates implementing **standard EWC** in Week 2, treating **EWC-DR** as an optional future extension. The rationale is grounded in sound scientific and engineering principles:
+*(Note: Under our Week 2 shift to shuffled single-pass online learning, both standard EWC and EWC-DR are deferred as background for potential future extensions. If and when the project revisits sequential continual learning, the rationale below explains why standard EWC should precede EWC-DR.)*
+
+Our initial continual-learning plan prioritized implementing **standard EWC** before treating **EWC-DR** as an optional extension. The rationale is grounded in sound scientific and engineering principles:
 
 1. **Adherence to the Scientific Method:**
    Our primary research question is:
