@@ -1,9 +1,20 @@
 # Project Decisions
 
-| Date | Decision | Reason |
-|---|---|---|
-| 2026-10-05 | Use CIFAR-100 | Team agreement; suitable for sequential class-incremental experiments |
-| 2026-10-05 | Start with Task 1 (0–9) and Task 2 (10–19) | Keep the first experiment small and easy to debug |
-| 2026-10-05 | Compare sequential baseline with standard EWC | Gives the project one clear and reproducible main comparison |
-| 2026-10-05 | Postpone EWC-DR | Treat it as an optional extension after standard EWC is stable |
-| 2026-10-05 | Use seed 42 for initial development | Makes early runs easier to repeat |
+Updated: October 12, 2026
+
+| Decision | Reason |
+|---|---|
+| Focus on online learning | Follow Dr. Athitsos's suggestion to study learning from incoming data |
+| Keep CIFAR-100 | Reuse the team's existing work |
+| Mix classes in random order | Keep the class distribution fixed instead of introducing separate class groups |
+| Start with classes 0â€“19, then use all 100 | Check the small pipeline before expanding |
+| Use one pass with no replay | Start with a simple online baseline |
+| Track accuracy as examples arrive | Measure learning progress rather than Task 1 forgetting |
+| Compare with offline training later | Show what extra passes through the data provide |
+| Set EWC aside for now | Keep forgetting prevention as possible future work |
+| Start with seed 42 | Make early runs easier to repeat |
+
+The detailed settings still need Dr. Athitsos's confirmation.
+
+See `experiment_protocol.md` for experiment rules and
+`two_week_assignment.md` for team tasks.
