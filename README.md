@@ -2,13 +2,17 @@
 
 A semester-long ACM Research project studying how an image classifier learns from incoming labeled data. Our main setting is a randomly shuffled, single-pass CIFAR-100 stream with a fixed class set.
 
-## Direction Update — October 12, 2026
+## Direction Confirmed — October 13, 2026
 
-We are moving back to online learning following Dr. Athitsos's guidance. Instead of learning separate class groups one after another, we will mix the selected classes throughout the stream.
+Dr. Athitsos confirmed our understanding of the revised setting:
 
-The team's implementation plan is below. The detailed protocol is awaiting Dr. Athitsos's confirmation; it is not a claim that he has approved every experiment choice.
+> Yes, this is exactly what I had in mind.
 
-See [the current direction and protocol](docs/online_learning_direction.md). This README and that document supersede conflicting task-based instructions in older assignment, protocol, and checklist documents. Older documents remain as historical references.
+We will mix examples from the same fixed class set, learn from small arriving batches in one pass without replay, and track accuracy as more examples are processed. Online learning is the main focus; EWC is a possible later extension.
+
+This confirms the direction described in our email. Specific choices such as batch size, optimizer, and evaluation intervals remain team implementation choices, not individually approved settings.
+
+See [the current direction and protocol](docs/online_learning_direction.md). Any earlier note saying this direction is awaiting confirmation is superseded by this October 13 update. Older task-based documents remain historical references.
 
 ## Research Question
 
@@ -33,7 +37,7 @@ Catastrophic forgetting is no longer the main metric. EWC, Fisher estimation, an
 | Khoi | Build the mixed-class stream, seeded ordering, and loader tests |
 | Nguyen | Build the shared CNN and single-pass training/evaluation loop |
 | Alka | Align the result schema, plot accuracy versus examples processed, and update experiment documentation |
-| Dong Quan Tran | Confirm the protocol with Dr. Athitsos, coordinate integration, and track progress |
+| Dong Quan Tran | Record advisor guidance, coordinate integration, and track progress |
 
 Progress reviews prioritize effort, commitment, follow-through, communication, collaboration, and response to feedback. Research accuracy and GitHub activity alone do not determine ratings.
 
@@ -58,7 +62,7 @@ tests/         Automated checks
 
 ## Current Completion Checklist
 
-- [ ] Detailed protocol confirmed with Dr. Athitsos.
+- [x] Online-learning direction confirmed with Dr. Athitsos on October 13, 2026.
 - [ ] Mixed-class stream works on the initial 20-class subset.
 - [ ] Stream tests verify labels, coverage, no repeats, and seeded ordering.
 - [ ] CNN completes a single pass with no replay.
@@ -68,4 +72,4 @@ tests/         Automated checks
 - [ ] Full 100-class experiment runs after the debugging stage.
 - [ ] Online/offline comparison and repeated-seed results are documented.
 
-These are upcoming goals, not claims that the implementation or tests already pass.
+The unchecked items are upcoming goals, not claims that the implementation or tests already pass.
