@@ -1,11 +1,11 @@
 # Week 2 Assignment: Move to Online Learning
 
-Updated: October 12, 2026  
+Updated: October 13, 2026  
 Duration: One week
 
 ## Goal
 
-Build on Week 1's work and adapt the project to Dr. Athitsos's suggested
+Build on Week 1's work and adapt the project to Dr. Athitsos's confirmed
 online-learning setting.
 
 Instead of training separate class groups one after another, we will mix
@@ -29,8 +29,9 @@ Keep Week 1 contributions. Reuse and adapt them rather than starting over.
 The same class set remains available throughout the stream.
 We are no longer using separate class-incremental training stages.
 
-Dr. Athitsos suggested the fixed-distribution, random-order setting.
-Our detailed experiment choices still need his confirmation.
+Dr. Athitsos confirmed our understanding on October 13, 2026:
+"Yes, this is exactly what I had in mind." The direction is confirmed;
+specific implementation settings remain team choices.
 
 ## Shared Settings
 
@@ -340,8 +341,8 @@ matches the saved results.
 
 ### Tasks
 
-1. Confirm the detailed setting with Dr. Athitsos.
-2. Record any changes he requests.
+1. Share Dr. Athitsos's October 13 confirmation with the team.
+2. Record any further changes he requests.
 3. Make sure Week 1 submissions are available to everyone.
 4. Settle shared interfaces, settings, and result format early.
 5. Review pull requests and test evidence before merging.
@@ -354,7 +355,7 @@ matches the saved results.
 
 ### Submit
 
-- Recorded protocol status and agreed settings.
+- Recorded advisor confirmation and agreed settings.
 - Integration review and test evidence.
 - Short team update.
 
@@ -437,7 +438,8 @@ Accuracy and GitHub activity alone do not determine a rating.
 # End-of-Week Checklist
 
 - [ ] Week 1 work is preserved and available.
-- [ ] Protocol status and shared settings are recorded.
+- [x] Online-learning direction confirmed by Dr. Athitsos on October 13, 2026.
+- [ ] Shared implementation settings are recorded.
 - [ ] Classes 0–19 are combined before shuffling.
 - [ ] Each training example appears once, with no dropped final batch.
 - [ ] Training, validation, and test examples are separate.
