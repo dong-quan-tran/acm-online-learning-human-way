@@ -1,6 +1,6 @@
 # Project Decisions
 
-Updated: October 12, 2026
+Updated: October 13, 2026
 
 | Decision | Reason |
 |---|---|
@@ -14,7 +14,15 @@ Updated: October 12, 2026
 | Set EWC aside for now | Keep forgetting prevention as possible future work |
 | Start with seed 42 | Make early runs easier to repeat |
 
-The detailed settings still need Dr. Athitsos's confirmation.
+## Advisor Confirmation — October 13, 2026
+
+Dr. Athitsos replied:
+
+> Yes, this is exactly what I had in mind.
+
+He confirmed our understanding: mix examples from a fixed class set in random order, learn from small incoming batches in one pass without replay, and track accuracy as more data arrives. EWC remains a possible later extension.
+
+The online-learning direction is confirmed. Batch size, model details, optimizer, evaluation intervals, and comparison budgets remain team implementation choices. Earlier pending-confirmation notes about the direction are superseded by this update.
 
 See `experiment_protocol.md` for experiment rules and
 `two_week_assignment.md` for team tasks.
