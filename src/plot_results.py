@@ -5,68 +5,84 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 ROOT = Path(__file__).resolve().parents[1]
-RESULTS_PATH = ROOT / "results" / "results.csv"
+RESULTS_PATH = ROOT / "results" / "online_results.csv"
 FIGURES_PATH = ROOT / "results" / "figures"
 
 
-def plot_baseline():
+def plot_learning_curve():
     # Read experiment results
+    if not RESULTS_PATH.exists():
+        print("No online_results.csv file found yet.")
+        return
+
     with open(RESULTS_PATH, "r", newline="") as file:
         reader = csv.DictReader(file)
         rows = list(reader)
 
-    # Find the baseline experiment
-    baseline_rows = [
-        row for row in rows
-        if row.get("method", "").strip().lower() == "baseline"
-    ]
-
-    if not baseline_rows:
-        print("No baseline results found yet.")
+    if not rows:
+        print("No experiment results found yet.")
         return
 
-    result = baseline_rows[0]
+    # Group checkpoints by experiment run
+    runs = {}
 
-    # Get the three required accuracy measurements
-    columns = [
-        "task_1_acc_after_task_1",
-        "task_1_acc_after_task_2",
-        "task_2_acc_after_task_2",
-    ]
+    for row in rows:
+        try:
+            mode = row["mode"].strip().lower()
+            run_id = row["run_id"].strip()
+            examples = int(row["examples_processed"])
+            accuracy = float(row["accuracy"])
+            eval_split = row["eval_split"].strip().lower()
 
-    try:
-        accuracies = [float(result[column]) for column in columns]
-    except (ValueError, TypeError, KeyError):
-        print("Baseline accuracy values are missing or invalid.")
+            if not 0 <= accuracy <= 1:
+                raise ValueError
+
+        except (ValueError, TypeError, KeyError):
+            print("Skipping row with missing or invalid values.")
+            continue
+
+        key = (mode, run_id, eval_split)
+
+        if key not in runs:
+            runs[key] = []
+
+        runs[key].append((examples, accuracy))
+
+    if not runs:
+        print("No valid results to plot.")
         return
 
-    if not all(0 <= accuracy <= 1 for accuracy in accuracies):
-        print("Expected accuracy values as decimals between 0 and 1.")
-        return
-
-    labels = [
-        "Task 1 after Task 1",
-        "Task 1 after Task 2",
-        "Task 2 after Task 2",
-    ]
-
-    # Create the baseline accuracy chart
+    # Create learning curves
     plt.figure(figsize=(9, 5))
-    plt.bar(labels, accuracies)
-    plt.ylabel("Accuracy")
+
+    for (mode, run_id, eval_split), points in sorted(runs.items()):
+        points.sort(key=lambda point: point[0])
+
+        x = [point[0] for point in points]
+        y = [point[1] for point in points]
+
+        plt.plot(
+            x, y,
+            marker="o",
+            label=f"{mode} - {run_id} ({eval_split})"
+        )
+
+    plt.xlabel("Training Examples Processed")
+    plt.ylabel("Validation Accuracy")
     plt.ylim(0, 1)
-    plt.title("Baseline Accuracy Across Sequential Tasks")
-    plt.xticks(rotation=15, ha="right")
+    plt.title("Online Learning: Accuracy vs. Training Examples Processed")
+    plt.legend()
+    plt.grid(True, alpha=0.3)
     plt.tight_layout()
 
     # Save the chart
     FIGURES_PATH.mkdir(parents=True, exist_ok=True)
-    output_path = FIGURES_PATH / "baseline_forgetting.png"
+    output_path = FIGURES_PATH / "online_learning_curve.png"
     plt.savefig(output_path, dpi=300)
     plt.close()
 
-    print(f"Baseline plot saved to: {output_path}")
+    print(f"Learning curve saved to: {output_path}")
 
 
 if __name__ == "__main__":
-    plot_baseline()
+    plot_learning_curve()
