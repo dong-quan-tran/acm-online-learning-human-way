@@ -5,14 +5,14 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 ROOT = Path(__file__).resolve().parents[1]
-RESULTS_PATH = ROOT / "results" / "results.csv"
+RESULTS_PATH = ROOT / "results" / "online_results.csv"
 FIGURES_PATH = ROOT / "results" / "figures"
 
 
 def plot_learning_curve():
     # Read experiment results
     if not RESULTS_PATH.exists():
-        print("No results.csv file found yet.")
+        print("No online_results.csv file found yet.")
         return
 
     with open(RESULTS_PATH, "r", newline="") as file:
@@ -69,16 +69,16 @@ def plot_learning_curve():
         )
 
     plt.xlabel("Training Examples Processed")
-    plt.ylabel("Held-Out Accuracy")
+    plt.ylabel("Validation Accuracy")
     plt.ylim(0, 1)
-    plt.title("Accuracy vs. Training Examples Processed")
+    plt.title("Online Learning: Accuracy vs. Training Examples Processed")
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
 
     # Save the chart
     FIGURES_PATH.mkdir(parents=True, exist_ok=True)
-    output_path = FIGURES_PATH / "learning_curve.png"
+    output_path = FIGURES_PATH / "online_learning_curve.png"
     plt.savefig(output_path, dpi=300)
     plt.close()
 
