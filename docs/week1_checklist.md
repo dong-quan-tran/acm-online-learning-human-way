@@ -1,12 +1,14 @@
 # Week 1 Checklist
 
 - [ ] CIFAR-100 loader downloads data automatically.
-- [ ] Task 1 contains only labels 0–9.
-- [ ] Task 2 contains only labels 10–19.
-- [ ] Task split test passes.
-- [ ] Baseline model trains on Task 1.
-- [ ] Task 1 accuracy is saved after Task 1.
-- [ ] The same model trains on Task 2.
-- [ ] Task 1 and Task 2 accuracy are saved after Task 2.
-- [ ] Baseline forgetting plot is created.
+- [ ] Classes 0â€“19 are combined and shuffled.
+- [ ] Model uses a fixed 100-output classification head.
+- [ ] Training, validation, and test sets do not overlap.
+- [ ] Stream order is reproducible using recorded seeds.
+- [ ] Baseline model trains on shuffled batches.
+- [ ] Each training example is processed exactly once.
+- [ ] Batch size is 32, with one update per batch.
+- [ ] Held-out accuracy is saved every 1,000 examples and at the end.
+- [ ] Results are saved in the agreed CSV format.
+- [ ] Learning curve plots accuracy versus examples processed.
 - [ ] README includes setup and run instructions.
