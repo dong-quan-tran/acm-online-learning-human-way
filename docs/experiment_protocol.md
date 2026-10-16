@@ -2,31 +2,35 @@
 
 ## Research Question
 
-Can standard Elastic Weight Consolidation reduce catastrophic forgetting when a model learns CIFAR-100 tasks one after another?
+How effectively can a neural network learn from a shuffled stream of CIFAR-100 images in a single pass, and how does its accuracy compare with offline training?
 
 ## Initial Experiment
 
-- Dataset: CIFAR-100
-- Task 1: class IDs 0–9
-- Task 2: class IDs 10–19
-- Model: one shared small CNN with 100 output classes
-- Learning order: train Task 1, evaluate Task 1, train Task 2 using the same model, then evaluate Tasks 1 and 2
-- Baseline: cross-entropy loss only; no replay and no EWC
-- EWC: cross-entropy plus an EWC penalty during Task 2
-- Initial random seed: 42
+- Dataset: CIFAR-100 (fine labels)
+- Debugging stage: classes 0â€“19 mixed together; main stage: all 100 classes
+- Model: one small CNN initialized from scratch with 100 output classes
+- Learning order: shuffle training examples once, then process each batch sequentially
+- Online baseline: batch size 32, one gradient update per batch, one pass only, including the final partial batch
+- Loss: cross-entropy; no replay, future-data access, or EWC
+- Data splits: separate validation data before training; reserve official test data for final evaluation
+- Initial seed: 42; record model and stream seeds separately
+- Evaluation: held-out accuracy every 1,000 processed examples and at the end
 
 ## Required Measurements
 
-- Task 1 accuracy after Task 1 training
-- Task 1 accuracy after Task 2 training
-- Task 2 accuracy after Task 2 training
-- Task 1 forgetting = Task 1 accuracy after Task 1 minus Task 1 accuracy after Task 2
-- Runtime and configuration values, if available
+- Held-out accuracy at each checkpoint (decimal between 0 and 1)
+- Number of examples processed and gradient updates
+- Final accuracy, training time, and memory usage (with measurement method)
+- Primary plot: accuracy versus examples processed
 
 ## Fair Comparison Rules
 
-The baseline and EWC runs must use the same model, dataset split, transforms, seed, optimizer, epochs, batch size, and learning rate. Only the EWC penalty and lambda value may differ.
+Compare online and multi-pass offline training using the same model, data splits, and preprocessing. Record differences in passes, updates, and runtime; do not claim equal compute. Agree on optimizer, learning rate, transforms, and offline epoch budget before comparisons. Repeat final runs with three recorded seeds.
 
 ## Reproducibility Rules
 
-Record the Python version, package versions, device, seed, configuration values, and exact run command. Do not upload CIFAR-100 files, checkpoints, secrets, or `.venv` folders.
+Record Python and package versions, device, seeds, configuration, data splits, and exact run commands. Verify each training example is used once, stream order is reproducible, and evaluation does not update model weights or statistics. Do not upload datasets, checkpoints, secrets, or `.venv` folders.
+
+## Previous Research
+
+Class-incremental learning, catastrophic forgetting, and EWC are preserved as background research and deferred extensions. This protocol is proposed and pending final team confirmation.
