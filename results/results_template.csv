@@ -1,1 +1,1 @@
-method,seed,batch_size,epochs,learning_rate,optimizer,task_1_acc_after_task_1,task_1_acc_after_task_2,task_2_acc_after_task_2,task_1_forgetting,lambda
+mode,run_id,model_seed,stream_seed,num_classes,examples_processed,updates,passes,batch_size,learning_rate,optimizer,eval_split,accuracy,training_seconds
