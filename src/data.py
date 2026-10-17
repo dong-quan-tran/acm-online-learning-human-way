@@ -64,7 +64,55 @@ class CIFAR100Task(Dataset):
 
         return image, label
 
+class CIFAR100OnlineStream(Dataset):
+    """
+    Mixed CIFAR-100 stream for online learning.
+    Uses classes 0-19 and fixes the order with a seed.
+    """
 
+    def __init__(self, split="train", seed=42):
+        if split not in {"train", "test"}:
+            raise ValueError("split must be 'train' or 'test'")
+
+        self.dataset = load_dataset(
+            "uoft-cs/cifar100",
+            split=split,
+            cache_dir=str(DATA_PATH),
+        )
+
+        # Keep classes 0-19
+        class_ids = set(range(20))
+
+        indices = [
+            i
+            for i, label in enumerate(self.dataset["fine_label"])
+            if label in class_ids
+        ]
+
+        # Shuffle the training stream once using the seed
+        if split == "train":
+            generator = torch.Generator().manual_seed(seed)
+            order = torch.randperm(
+                len(indices),
+                generator=generator,
+            ).tolist()
+
+            indices = [indices[i] for i in order]
+
+        self.indices = indices
+        self.transform = get_transform()
+
+    def __len__(self):
+        return len(self.indices)
+
+    def __getitem__(self, index):
+        item = self.dataset[self.indices[index]]
+
+        image = self.transform(item["img"])
+        label = item["fine_label"]
+
+        return image, label
+    
 def get_task_loader(task_id, split="train", batch_size=64, seed=42):
     """
     Return a DataLoader for one CIFAR-100 task.
@@ -86,4 +134,21 @@ def get_task_loader(task_id, split="train", batch_size=64, seed=42):
         batch_size=batch_size,
         shuffle=(split == "train"),
         generator=generator,
+    )
+
+def get_online_loader(split="train", batch_size=32, seed=42):
+    """
+    Return the mixed class 0-19 online-learning stream.
+    """
+
+    dataset = CIFAR100OnlineStream(
+        split=split,
+        seed=seed,
+    )
+
+    return DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        drop_last=False,
     )
