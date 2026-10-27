@@ -1,6 +1,6 @@
 # Experiment Protocol
 
-Updated: October 12, 2026
+Updated: October 13, 2026
 
 ## Main Question
 
@@ -30,7 +30,9 @@ The model learns only from the current batch. It must not train on future
 batches or reuse earlier training examples. Model and optimizer state are
 kept between updates.
 
-These are planned settings, pending Dr. Athitsos's confirmation.
+Dr. Athitsos confirmed the online-learning direction on October 13, 2026:
+"Yes, this is exactly what I had in mind." Batch size, optimizer, model details,
+and evaluation intervals remain team implementation choices.
 
 ## Evaluation
 

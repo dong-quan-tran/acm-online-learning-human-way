@@ -1,10 +1,10 @@
 # Current Direction: Shuffled Online Learning
 
-Updated: October 12, 2026
+Updated: October 13, 2026
 
 ## Why We Are Changing
 
-Dr. Athitsos recommended returning the main focus to online learning. His email described a simpler setting where the underlying class distribution stays fixed and classes appear in random order. The following is our implementation plan, pending confirmation of its details.
+Dr. Athitsos recommended returning the main focus to online learning. His email described a simpler setting where the underlying class distribution stays fixed and classes appear in random order. On October 13, he confirmed our understanding: "Yes, this is exactly what I had in mind." The agreed direction is mixed classes, small incoming batches, one pass without replay, and accuracy tracked as data arrives. Specific implementation settings below remain team choices.
 
 ## Before and After
 
@@ -70,6 +70,6 @@ Nguyen: implement the CNN, single-pass training loop, checkpoints, and held-out 
 
 Alka: align CSV outputs and learning-curve plots; update the older protocol and checklists to match this direction.
 
-Dong Quan Tran: obtain protocol confirmation, coordinate interfaces and reviews, and track effort and follow-through rather than accuracy alone.
+Dong Quan Tran: record advisor guidance, coordinate interfaces and reviews, and track effort and follow-through rather than accuracy alone.
 
 Do not delete existing contributions. EWC, Fisher estimation, forgetting metrics, and class-blocked streams are deferred extensions. Older task-based documents are historical and must not override this current plan. No implementation, runtime verification, or passing tests are implied by this documentation update.
