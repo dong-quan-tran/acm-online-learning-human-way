@@ -86,10 +86,11 @@ def train(args):
         for warning in caught:
             print(f"Training warning: {warning.message}")
 
+        previous = processed
         processed += len(labels)
         updates += 1
 
-        if processed in checkpoints or processed == len(train_loader.dataset):
+        if any(previous < cp <= processed for cp in checkpoints) or processed == len(train_loader.dataset):
             accuracy = evaluate(model, validation_loader)
             elapsed = time.perf_counter() - start
 
