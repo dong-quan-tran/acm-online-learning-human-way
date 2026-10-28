@@ -31,8 +31,7 @@ python -m unittest discover -s tests -p "test_plot_results.py" -v
 Plot output: `results/figures/online_learning_curve.png`
 
 ## Results
-The plotting script successfully generated the expected graph using synthetic data. All six automated tests passed. Integration with Nguyen's actual results CSV is pending.
-
+The plotting script was successfully tested in Google Colab using both synthetic data and Nguyen's actual CIFAR-100 experiment results. All six automated tests passed. The real learning curve shows a final validation accuracy of 39.5% after processing 9,000 training examples.
 ## Next Steps
 - Test the plotter with Nguyen's real CSV without modifying its columns.
 - Generate the final learning curve with run ID and evaluation split.
