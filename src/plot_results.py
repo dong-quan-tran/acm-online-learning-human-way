@@ -1,10 +1,13 @@
 import csv
+import os
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 
 ROOT = Path(__file__).resolve().parents[1]
-RESULTS_PATH = ROOT / "results" / "online_results.csv"
+RESULTS_PATH = Path(
+    os.environ.get("RESULTS_CSV", str(ROOT / "results" / "online_results.csv"))
+)
 FIGURES_PATH = ROOT / "results" / "figures"
 
 
