@@ -1,0 +1,10 @@
+mode,run_id,model_seed,stream_seed,num_classes,examples_processed,updates,passes,batch_size,learning_rate,optimizer,eval_split,accuracy,training_seconds
+online,gaussiannb_seed42,42,42,20,1024,32,0.11377777777777778,32,,GaussianNB partial_fit,validation,0.228,0.08725223700048446
+online,gaussiannb_seed42,42,42,20,2016,63,0.224,32,,GaussianNB partial_fit,validation,0.221,0.18711228700044558
+online,gaussiannb_seed42,42,42,20,3008,94,0.3342222222222222,32,,GaussianNB partial_fit,validation,0.221,0.30066885500013996
+online,gaussiannb_seed42,42,42,20,4000,125,0.4444444444444444,32,,GaussianNB partial_fit,validation,0.207,0.37586644600060026
+online,gaussiannb_seed42,42,42,20,5024,157,0.5582222222222222,32,,GaussianNB partial_fit,validation,0.208,0.4610267349996775
+online,gaussiannb_seed42,42,42,20,6016,188,0.6684444444444444,32,,GaussianNB partial_fit,validation,0.216,0.5404997939997429
+online,gaussiannb_seed42,42,42,20,7008,219,0.7786666666666666,32,,GaussianNB partial_fit,validation,0.206,0.6227213360007227
+online,gaussiannb_seed42,42,42,20,8000,250,0.8888888888888888,32,,GaussianNB partial_fit,validation,0.207,0.7078440650011544
+online,gaussiannb_seed42,42,42,20,9000,282,1.0,32,,GaussianNB partial_fit,validation,0.206,0.7875212570017993
