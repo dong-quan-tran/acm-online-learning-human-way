@@ -1,104 +1,78 @@
-
 # Gaussian Naive Bayes — Online Continual Learning
 
 ## 1. Objective
 
-Evaluate Gaussian Naive Bayes (GaussianNB) as an online learning baseline on the same CIFAR-100 subset used by the team's other models.
-
-The goal is to compare validation accuracy and training time against logistic regression and SmallResNet under a shared data split and stream configuration.
+Evaluate Gaussian Naive Bayes (GaussianNB) as an online learning baseline on the CIFAR-100 dataset and compare its accuracy and training time with the team's other models.
 
 ## 2. Experiment Setup
 
-- Dataset: CIFAR-100, restricted to 20 classes (labels 0–19)
-- Training examples: 9,000
-- Validation examples: 1,000
-- Data loader: Khoi's shared online loader
-- Split membership: Original 20-class experiment JSON from VN.LD
-- Model: scikit-learn GaussianNB
-- Training method: `partial_fit()`
-- Training passes: 1
-- Batch size: 32
-- Model seed: 42
-- Stream seed: 42
-- Input features: Flattened RGB images (3,072 features)
-- Pixel scaling: Preserved from the shared loader
-- Device: CPU
+- **Dataset:** CIFAR-100, 20 classes (labels 0–19)
+- **Training examples:** 9,000
+- **Validation examples:** 1,000
+- **Data loader:** Khoi's shared online loader
+- **Data split:** VN.LD's original 20-class split
+- **Model:** scikit-learn GaussianNB
+- **Training method:** `partial_fit()`
+- **Training passes:** 1
+- **Batch size:** 32
+- **Model and stream seed:** 42
+- **Input:** Flattened RGB images (3,072 features), scaled to [0, 1]
+- **Device:** CPU
 
-The same GaussianNB model is updated sequentially across batches. The complete list of 20 classes is supplied during the first update.
+The model was updated incrementally using batches of 32 images. All 20 classes were specified during the first update.
+
+The original training stream order was verified against VN.LD's saved split.
 
 ## 3. Evaluation Protocol
 
-Validation accuracy is measured after these numbers of training examples:
+Validation accuracy was measured after processing:
 
-1024, 2016, 3008, 4000, 5024, 6016, 7008, 8000, 9000
+1,024, 2,016, 3,008, 4,000, 5,024, 6,016, 7,008, 8,000, and 9,000 examples.
 
-These checkpoints correspond to the recorded evaluation points in the team's previous 20-class experiment.
+Training time was measured cumulatively around `partial_fit()` calls, excluding data loading and validation.
 
-No zero-example accuracy is reported because GaussianNB requires an initial training update before prediction.
+## 4. Experimental Results
 
-Training time is measured cumulatively around `partial_fit()` calls, excluding validation time and data loading.
+| Examples Processed | Validation Accuracy |
+|---|---|
+| 1,024 | 22.8% |
+| 2,016 | 22.1% |
+| 3,008 | 22.1% |
+| 4,000 | 20.7% |
+| 5,024 | 20.8% |
+| 6,016 | 21.6% |
+| 7,008 | 20.6% |
+| 8,000 | 20.7% |
+| 9,000 | 20.6% |
 
-## 4. Reproduction
+**Final results:**
+- **Final validation accuracy:** 20.6%
+- **Total model-update time:** 0.788 seconds
+- **Training updates:** 282
+- **Training examples processed:** 9,000
+- **Device:** CPU
+- **Numerical training warnings:** None reported
 
-Run from the repository root after installing the project's dependencies and obtaining the shared membership JSON.
+Validation accuracy remained approximately between 20% and 23%, without sustained improvement as additional examples were processed.
+
+## 5. Reproduction
+
+From the repository root, install the required dependencies and run:
 
 ```bash
-python src/train_gaussiannb.py --membership path/to/shared_c20_split.json --batch-size 32 --seed 42
+python src/train_gaussiannb.py --membership data/shared_c20_membership.json --batch-size 32 --seed 42
 ```
 
-The command writes:
+Results are saved to:
 
 `results/gaussiannb_results.csv`
 
-To generate the learning curve:
+Generate the learning curve:
 
 ```bash
 RESULTS_CSV=results/gaussiannb_results.csv python src/plot_results.py
 ```
 
-The plotting script writes:
+The graph is saved to:
 
-`results/figures/online_learning_curve.png`
-
-## 5. Tests
-
-The GaussianNB implementation has five passing unit tests.
-
-The plotting utilities have six passing tests.
-
-A full end-to-end training run using the original shared membership file is still pending.
-
-## 6. Experimental Results
-
-Pending execution with the shared 20-class membership JSON.
-
-- Final validation accuracy: TBD
-- Total model-update training time: TBD
-- Number of training updates: TBD
-- Numerical warnings: TBD
-
-## 7. Comparison With Other Models
-
-The team's previous logistic regression and SmallResNet results will be used for comparison after the GaussianNB experiment completes.
-
-Comparison criteria:
-
-- Validation accuracy at shared checkpoints
-- Final validation accuracy
-- Model-update training time
-- Learning-curve behavior
-- Computational cost and model limitations
-
-## 8. Limitations
-
-GaussianNB assumes features are conditionally independent given the class. This assumption is restrictive for image data because neighboring pixels are often correlated.
-
-GaussianNB also models each feature using a class-conditional Gaussian distribution, which may not accurately represent all pixel-value distributions.
-
-These limitations will be considered when interpreting the experimental results.
-
-## 9. Status
-
-Implementation and preliminary unit tests completed.
-
-Awaiting the original shared membership JSON for full experimental execution and final comparison.
+`results/
