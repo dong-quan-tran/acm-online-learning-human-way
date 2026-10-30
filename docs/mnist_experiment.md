@@ -1,3 +1,26 @@
+# Required MNIST 9,000/1,000 rerun
+
+The current requested experiment uses `configs/mnist_9000.yaml`:
+9,000 training and 1,000 validation images selected from the official MNIST
+training source with split seed 42. All ten digits are mixed; the stream seed
+only orders the fixed training membership. The remaining 50,000 training-source
+images are unused. The official test set remains untouched.
+
+```powershell
+python -m pytest -v --tb=short
+python -m src.train_online --config configs/mnist_9000.yaml --output data/processed/mnist_9000_seed42
+```
+
+Expected completion: 9,000 examples, 282 updates, 281 full batches plus a final
+batch of 8. Batch size 32, Adam 0.001, seed 42, one pass and no replay are
+unchanged. This matches CIFAR sample counts; model/dataset/preprocessing
+alignment still needs to be considered before claiming a controlled comparison.
+
+The earlier 54,000/6,000 experiment and `configs/mnist.yaml` are preserved below
+as historical results. Its 99.08% score is not the score for this smaller rerun.
+
+---
+
 # SmallResNet on MNIST
 
 ## Setup and run
@@ -114,3 +137,8 @@ a confusion matrix and first 20 mistakes. The comparison notebook was rerun:
 all five code cells executed and passed notebook validation. Diagnostic plots
 were visually checked. This confirms this run's consistency, not multi-seed
 robustness or a controlled MNIST/CIFAR comparison.
+
+Independent checkpoint audit reproduced all four metrics: 964 correct, 36
+errors on 1,000 validation images. Loader memberships match, model state stayed
+unchanged, and no official test images were used. The 9,000/1,000 notebook
+executed all four code cells successfully and passed notebook validation.

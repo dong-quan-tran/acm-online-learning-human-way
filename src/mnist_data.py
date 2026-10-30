@@ -9,7 +9,7 @@ from src.data import DATA_PATH
 
 class MNISTStream(Dataset):
     def __init__(self, split="train", *, split_seed=42, stream_seed=42,
-                 validation_size=6000, download=False):
+                 validation_size=6000, train_size=None, download=False):
         if split not in {"train", "validation", "test"}:
             raise ValueError("split must be train, validation, or test")
         self.source_split = "test" if split == "test" else "train"
@@ -23,8 +23,14 @@ class MNISTStream(Dataset):
             membership = torch.randperm(
                 len(self.source), generator=torch.Generator().manual_seed(split_seed)
             ).tolist()
+            available = len(self.source) - validation_size
+            if train_size is None:
+                train_size = available
+            if type(train_size) is not int or not 0 < train_size <= available:
+                raise ValueError("train_size must fit the remaining training-source rows")
+            # Select membership with split_seed only, before stream ordering.
             self.indices = (membership[:validation_size] if split == "validation"
-                            else membership[validation_size:])
+                            else membership[validation_size:validation_size + train_size])
             if split == "train":
                 order = torch.randperm(len(self.indices), generator=
                                       torch.Generator().manual_seed(stream_seed)).tolist()

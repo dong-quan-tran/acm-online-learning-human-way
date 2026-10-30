@@ -103,6 +103,7 @@ def run(config_path, output, download=False):
     # CPU makes the timing scope and deterministic execution explicit.
     device = torch.device("cpu")
     kwargs = {key: config[key] for key in ("split_seed", "stream_seed", "validation_size")}
+    kwargs["train_size"] = config.get("train_size")
     train = get_mnist_loader(batch_size=config["batch_size"], download=download, **kwargs)
     validation = get_mnist_loader("validation", batch_size=config["batch_size"],
                                    download=download, **kwargs)

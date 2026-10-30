@@ -90,3 +90,35 @@ def test_smallresnet_training_update_and_eval_state():
 def test_invalid_split_settings(kwargs):
     with pytest.raises(ValueError):
         mnist_data.MNISTStream(**kwargs)
+
+
+def test_required_9000_1000_subset():
+    kwargs = {"train_size": 9000, "validation_size": 1000}
+    train = mnist_data.get_mnist_loader(**kwargs)
+    validation = mnist_data.get_mnist_loader("validation", **kwargs)
+    a, b = train.dataset.indices, validation.dataset.indices
+    assert len(a) == len(set(a)) == 9000
+    assert len(b) == len(set(b)) == 1000
+    assert not set(a) & set(b)
+    selected = torch.randperm(60000, generator=torch.Generator().manual_seed(42)).tolist()[:10000]
+    assert set(a) | set(b) == set(selected)
+    assert a == mnist_data.MNISTStream(**kwargs).indices
+    other = mnist_data.MNISTStream(stream_seed=43, **kwargs)
+    assert a != other.indices and set(a) == set(other.indices)
+    assert b == mnist_data.MNISTStream("validation", stream_seed=43, **kwargs).indices
+    sizes, ids, labels = [], [], set()
+    for images, batch_labels, sample_ids in train:
+        assert images.shape == (len(batch_labels), 1, 28, 28)
+        sizes.append(len(images)); ids.extend(sample_ids); labels.update(batch_labels.tolist())
+    assert sizes == [32] * 281 + [8]
+    assert len(train) == 282 and not train.drop_last
+    assert len(ids) == len(set(ids)) == 9000
+    assert ids == [f"train:{row}" for row in a]
+    assert labels == set(range(10))
+    assert sum(len(batch[0]) for batch in validation) == 1000
+
+
+@pytest.mark.parametrize("train_size", [0, -1, 59001, 9000.5, True])
+def test_invalid_subset_size(train_size):
+    with pytest.raises(ValueError, match="train_size"):
+        mnist_data.MNISTStream(train_size=train_size, validation_size=1000)

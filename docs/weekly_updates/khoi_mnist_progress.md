@@ -1,4 +1,14 @@
-# Completed MNIST run — current status
+# Current required run: 9,000 training / 1,000 validation
+
+The requested smaller-data rerun is completed and independently checkpoint-audited:
+**96.4% validation accuracy**, macro F1 **0.963253**, 282 updates, zero overlap.
+See `khoi_mnist_9000_results.md` and `notebooks/mnist_9000_comparison.ipynb`.
+The 54,000/6,000 result below is preserved as historical work, not the score
+for the required run. Regression suite: 29 passed in 43.63s.
+
+---
+
+# Completed MNIST run â€” current status
 
 The `mnist_seed42_complete` experiment has finished: 54,000 training examples,
 1,688 updates, final validation accuracy 99.0833%, macro precision 99.1030%,

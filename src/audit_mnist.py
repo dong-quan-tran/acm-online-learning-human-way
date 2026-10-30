@@ -26,19 +26,25 @@ def audit(run_dir, output):
     membership = json.loads((run_dir / "membership.json").read_text())
     training, validation = membership["train_stream_rows"], membership["validation_rows"]
     assert membership["source_split"] == "train"
-    assert len(training) == len(set(training)) == 54000
-    assert len(validation) == len(set(validation)) == 6000
+    expected_validation = config["validation_size"]
+    expected_training = config.get("train_size", 60000 - expected_validation)
+    assert len(training) == len(set(training)) == expected_training
+    assert len(validation) == len(set(validation)) == expected_validation
     assert not set(training) & set(validation)
-    assert set(training) | set(validation) == set(range(60000))
+    assert set(training) | set(validation) <= set(range(60000))
+    assert len(set(training) | set(validation)) == expected_training + expected_validation
     # Check configured loader agrees, but evaluate directly from the saved rows.
     for split, expected in (("train", training), ("validation", validation)):
         dataset = MNISTStream(split, split_seed=config["split_seed"],
                               stream_seed=config["stream_seed"],
-                              validation_size=config["validation_size"], download=False)
+                              validation_size=config["validation_size"],
+                              train_size=config.get("train_size"), download=False)
         assert dataset.indices == expected, f"{split} loader differs from saved membership"
     torch.set_num_threads(config["threads"])
     torch.use_deterministic_algorithms(True)
     source = MNIST(DATA_PATH, train=True, download=False, transform=ToTensor())
+    assert set(source.targets[training].tolist()) == set(range(10))
+    assert set(source.targets[validation].tolist()) == set(range(10))
     loader = DataLoader(Subset(source, validation), batch_size=32, shuffle=False, drop_last=False)
     model = SmallResNet(num_classes=config["num_classes"], in_channels=config["in_channels"],
                         dropout=config["dropout"], mean=config["mean"], std=config["std"])
@@ -62,8 +68,8 @@ def audit(run_dir, output):
                     errors.append((images[i].squeeze().clone(), label, pred, row))
             seen += len(labels)
             if seen % 1024 == 0:
-                print(f"Audited {seen}/6000 validation images", flush=True)
-    assert seen == 6000 and all(torch.equal(v, model.state_dict()[k]) for k, v in before.items())
+                print(f"Audited {seen}/{expected_validation} validation images", flush=True)
+    assert seen == expected_validation and all(torch.equal(v, model.state_dict()[k]) for k, v in before.items())
     metrics = classification_metrics(confusion)
     assert metrics["accuracy"] == correct / seen
     # Separate per-class calculation as a metric cross-check.
@@ -77,7 +83,8 @@ def audit(run_dir, output):
         assert abs(metrics[name]-value) < 1e-12
     with (run_dir / "results.csv").open(newline="") as handle:
         final = list(csv.DictReader(handle))[-1]
-    assert int(final["examples_processed"]) == 54000 and int(final["updates"]) == 1688
+    assert int(final["examples_processed"]) == expected_training
+    assert int(final["updates"]) == (expected_training + 31) // 32
     for key, value in metrics.items():
         assert abs(value-float(final[key])) < 1e-12, f"Saved {key} does not reproduce"
     output.mkdir(parents=True, exist_ok=False)
@@ -98,7 +105,7 @@ def audit(run_dir, output):
             ax.text(j,i,str(int(confusion[i,j])),ha="center",va="center",
                     color="white" if confusion[i,j]>350 else "black",fontsize=8)
     ax.set(xticks=range(10),yticks=range(10),xlabel="Predicted digit",ylabel="True digit",
-           title=f"Reloaded checkpoint: validation confusion matrix ({seen-correct} errors / 6000)")
+           title=f"Reloaded checkpoint: validation confusion matrix ({seen-correct} errors / {seen})")
     fig.tight_layout(); fig.savefig(output / "confusion_matrix.png",dpi=150); plt.close(fig)
     fig, axes = plt.subplots(4,5,figsize=(10,8))
     for ax in axes.flat: ax.axis("off")
