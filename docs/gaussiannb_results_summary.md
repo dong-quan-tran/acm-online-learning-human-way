@@ -60,6 +60,7 @@ Validation accuracy remained approximately between 20% and 23%, without sustaine
 From the repository root, install the required dependencies and run:
 
 ```bash
+pip install -r requirements.txt
 python src/train_gaussiannb.py --membership data/shared_c20_membership.json --batch-size 32 --seed 42
 ```
 
@@ -76,3 +77,40 @@ RESULTS_CSV=results/gaussiannb_results.csv FIGURE_NAME=gaussiannb_learning_curve
 The graph is saved to:
 
 `results/figures/gaussiannb_learning_curve.png`
+
+## 6. Final Verification
+
+The following tests were run in Google Colab using Python 3.13.18.
+
+### GaussianNB Model Tests
+
+Command:
+`python -m pytest tests/test_gaussiannb.py -v`
+
+Result:
+`5 passed in 12.47s`
+
+### Plotting Tests
+
+Command:
+`python -m pytest tests/test_plot_results.py -v`
+
+Result:
+`6 passed in 1.74s`
+
+### Graph Generation
+
+Environment variables:
+- `RESULTS_CSV=results/gaussiannb_results.csv`
+- `FIGURE_NAME=gaussiannb_learning_curve.png`
+
+Command:
+`python src/plot_results.py`
+
+Output:
+`Learning curve saved to: /content/acm-online-learning-human-way/results/figures/gaussiannb_learning_curve.png`
+
+The generated graph file was confirmed to exist.
+
+**Total: 11 tests passed, 0 failed.**
+
