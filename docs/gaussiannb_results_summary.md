@@ -130,4 +130,25 @@ All 9,000 verified: True
 ```
 
 This confirms that GaussianNB used the same training sample sequence as VN.LD's saved stream, ruling out differences in training sample selection and order as explanations for the observed accuracy difference.
+## 7. Comparison with ResNet
+
+I compared my GaussianNB results with VN.LD's ResNet experiment. Both models used the same 9,000 training samples in the same order, with 282 updates.
+
+| Metric | GaussianNB | ResNet |
+|---|---|---|
+| Final accuracy | 20.6% | 43.2% |
+| Training time | 0.788s | 4.651s |
+| Device | CPU | Tesla T4 GPU |
+
+### Observations
+
+GaussianNB started with higher accuracy (22.8% vs. 15.6% at 1,024 samples), but stayed around 20–23% throughout training. ResNet started lower but kept improving, reaching 43.2%.
+
+I think GaussianNB performed better initially because it could learn basic patterns from fewer samples. However, its assumption that pixel features are independent may limit its performance on images. ResNet can learn more complex image features, which could explain why it improved with more data.
+
+### Limitations and Next Steps
+
+This comparison is based on one run per model. Also, training times aren't directly comparable because the models ran on different hardware and used different training methods.
+
+As a next step, I would test both models with multiple random seeds to see whether the accuracy difference stays consistent.
 
