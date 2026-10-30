@@ -70,7 +70,7 @@ Results are saved to:
 Generate the learning curve:
 
 ```bash
-RESULTS_CSV=results/gaussiannb_results.csv python src/plot_results.py
+RESULTS_CSV=results/gaussiannb_results.csv FIGURE_NAME=gaussiannb_learning_curve.png python src/plot_results.py
 ```
 
 The graph is saved to:
