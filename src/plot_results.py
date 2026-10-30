@@ -61,8 +61,8 @@ def plot_learning_curve():
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    FIGURES_PATH.mkdir(parents=True, exist_ok=True)
-    output_path = FIGURES_PATH / "online_learning_curve.png"
+    FIGURES_PATH.mkdir(parents=True, exist_ok=True)   
+    output_path = FIGURES_PATH / os.environ.get("FIGURE_NAME", "online_learning_curve.png")
     plt.savefig(output_path, dpi=300)
     plt.close()
     print(f"Learning curve saved to: {output_path}")
