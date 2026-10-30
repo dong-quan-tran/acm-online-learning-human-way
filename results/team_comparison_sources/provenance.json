@@ -1,0 +1,20 @@
+{
+  "alka_branch_commit": "10c9ef76da8df1de3ab97410df20c0c2f40b8258",
+  "alka_combined_csv_path": "results/gaussiannb_vs_resnet_results.csv",
+  "alka_combined_csv_git_blob": "079799f70398f6497a309f02a9c01a1a189d4c32",
+  "nguyen_notebook_commit": "3d356f9efa7bbcff1c07eb49936a53bf1692a8c0",
+  "nguyen_notebook_path": "src/rawsgd-cifar-100.ipynb",
+  "nguyen_notebook_sha256": "f741e3c6ddf24dc383b27c37862f5678dd98761ce7519447c8da0e8dd6898dd4",
+  "nguyen_combined_csv_alias": "resnet_nguyen_seed42",
+  "nguyen_original_run_id": "online_c20_m42_s42_20261028-173041",
+  "nguyen_run_mapping_source": "alka_pr9_handoff.md; original checkpoint not independently evaluated",
+  "cifar_stream_verification": "Alka reports matching order; original split artifact absent here, not independently verified",
+  "older_cifar_run_excluded": {
+    "run_id": "online_c20_m42_s42_20261015-200612",
+    "accuracy": 0.395,
+    "learning_rate": 0.002
+  },
+  "mnist_run_id": "mnist_nguyen_literal_seed42",
+  "mnist_evidence": "local saved-checkpoint audit: 965 correct / 1000, all metrics reproduced",
+  "created_local_date": "2026-10-30"
+}

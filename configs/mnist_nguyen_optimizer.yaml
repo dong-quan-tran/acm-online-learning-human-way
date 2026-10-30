@@ -1,0 +1,29 @@
+# Separate optimizer-alignment experiment; original Adam configs/results preserved.
+# Reference: origin/main at 3d356f9, src/rawsgd-cifar-100.ipynb CFG.
+# The root notebook has lr=0.002; this src version and the supplied table use 0.0005.
+# Only optimizer/schedule aligned here; augmentation/normalization/device differ.
+dataset: mnist
+model: SmallResNet
+in_channels: 1
+num_classes: 10
+model_seed: 42
+split_seed: 42
+stream_seed: 42
+train_size: 9000
+validation_size: 1000
+batch_size: 32
+passes: 1
+replay: false
+preprocessing: ToTensor
+mean: [0.0]
+std: [1.0]
+dropout: 0.2
+optimizer: adamw
+learning_rate: 0.0005  # OneCycle maximum, not constant LR
+weight_decay: 0.0005
+scheduler: OneCycleLR
+pct_start: 0.15
+eval_every_examples: 1000
+threads: 2
+
+comparison_status: "Nguyen optimizer/schedule aligned; native MNIST channels/head, no augmentation, identity normalization, CPU; not full CIFAR parity"

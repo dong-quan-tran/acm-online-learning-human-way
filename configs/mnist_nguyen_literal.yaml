@@ -1,0 +1,33 @@
+# Reference: origin/main 3d356f9 src/rawsgd-cifar-100.ipynb. Separate literal matching experiment.
+dataset: mnist
+model: SmallResNet
+in_channels: 3
+num_outputs: 100
+num_classes: 10
+model_seed: 42
+split_seed: 42
+stream_seed: 42
+train_size: 9000
+validation_size: 1000
+batch_size: 32
+passes: 1
+replay: false
+preprocessing: nguyen_literal
+profile: nguyen_literal
+membership_strategy: nguyen_stratified
+mean: [0.5071, 0.4865, 0.4409]
+std: [0.2673, 0.2564, 0.2762]
+dropout: 0.2
+optimizer: adamw
+learning_rate: 0.0005  # OneCycle maximum, not constant LR
+weight_decay: 0.0005
+scheduler: OneCycleLR
+pct_start: 0.15
+eval_every_examples: 1000
+threads: 2
+
+device: auto
+eval_batch_size: 256
+num_workers: 2
+seed_workers: true
+comparison_status: "Literal CIFAR input/head/transforms/optimizer profile applied to MNIST; dataset/digit classes and available hardware differ; resize+RGB replication documented"

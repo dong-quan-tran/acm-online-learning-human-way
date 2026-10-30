@@ -1,0 +1,73 @@
+{
+  "config": {
+    "dataset": "mnist",
+    "model": "SmallResNet",
+    "in_channels": 3,
+    "num_outputs": 100,
+    "num_classes": 10,
+    "model_seed": 42,
+    "split_seed": 42,
+    "stream_seed": 42,
+    "train_size": 9000,
+    "validation_size": 1000,
+    "batch_size": 32,
+    "passes": 1,
+    "replay": false,
+    "preprocessing": "nguyen_literal",
+    "profile": "nguyen_literal",
+    "membership_strategy": "nguyen_stratified",
+    "mean": [
+      0.5071,
+      0.4865,
+      0.4409
+    ],
+    "std": [
+      0.2673,
+      0.2564,
+      0.2762
+    ],
+    "dropout": 0.2,
+    "optimizer": "adamw",
+    "learning_rate": 0.0005,
+    "weight_decay": 0.0005,
+    "scheduler": "OneCycleLR",
+    "pct_start": 0.15,
+    "eval_every_examples": 1000,
+    "threads": 2,
+    "device": "auto",
+    "eval_batch_size": 256,
+    "num_workers": 2,
+    "seed_workers": true,
+    "comparison_status": "Literal CIFAR input/head/transforms/optimizer profile applied to MNIST; dataset/digit classes and available hardware differ; resize+RGB replication documented"
+  },
+  "command": [
+    "python",
+    "-m",
+    "src.train_online",
+    "--config",
+    "configs/mnist_nguyen_literal.yaml",
+    "--output",
+    "data/processed/mnist_nguyen_literal_seed42"
+  ],
+  "started_utc": "2026-10-30T05:43:05.247616+00:00",
+  "device": "cpu",
+  "cuda_available": false,
+  "device_name": "Intel64 Family 6 Model 186 Stepping 3, GenuineIntel",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "processor": "Intel64 Family 6 Model 186 Stepping 3, GenuineIntel",
+  "python": "3.14.2 (tags/v3.14.2:df79316, Dec  5 2025, 17:18:21) [MSC v.1944 64 bit (AMD64)]",
+  "packages": {
+    "torch": "2.14.1",
+    "torchvision": "0.29.1",
+    "numpy": "2.5.2",
+    "PyYAML": "6.0.3",
+    "matplotlib": "3.11.2"
+  },
+  "metrics": "accuracy over every output (no mask); macro precision/recall/F1 over ten true digit classes; zero division = 0",
+  "training_seconds": 157.63175020040944,
+  "comparison_status": "Literal CIFAR input/head/transforms/optimizer profile applied to MNIST; dataset/digit classes and available hardware differ; resize+RGB replication documented",
+  "examples_processed": 9000,
+  "updates": 282,
+  "total_wall_seconds": 365.3713789000176,
+  "command_note": "Portable equivalent; original machine-specific paths remain in local run.json."
+}

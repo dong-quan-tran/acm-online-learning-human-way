@@ -1,0 +1,10 @@
+Metric,Khoi: MNIST / SmallResNet,Nguyen: CIFAR / SmallResNet,Alka: CIFAR / GaussianNB
+Final validation accuracy,96.50%,43.20%,20.60%
+Macro precision,96.53%,Unavailable,Unavailable
+Macro recall,96.50%,Unavailable,Unavailable
+Macro F1,0.9650,Unavailable,Unavailable
+Correct / validation count,"965 / 1,000","432 / 1,000 implied by reported accuracy/count","206 / 1,000 implied by reported accuracy/count"
+Training examples / updates,"9,000 / 282","9,000 / 282","9,000 / 282"
+Reported training/update seconds,157.632,4.651,0.788
+Timed run wall seconds,365.371,Unavailable,Unavailable
+Evidence,Local saved-checkpoint re-evaluation; all metrics reproduced,Alka's combined CSV + handoff mapping to Nguyen's updated run,Published GaussianNB export and experiment summary

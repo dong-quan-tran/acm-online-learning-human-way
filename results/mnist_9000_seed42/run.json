@@ -1,0 +1,56 @@
+{
+  "config": {
+    "dataset": "mnist",
+    "model": "SmallResNet",
+    "in_channels": 1,
+    "num_classes": 10,
+    "model_seed": 42,
+    "split_seed": 42,
+    "stream_seed": 42,
+    "train_size": 9000,
+    "validation_size": 1000,
+    "batch_size": 32,
+    "passes": 1,
+    "replay": false,
+    "preprocessing": "ToTensor",
+    "mean": [
+      0.0
+    ],
+    "std": [
+      1.0
+    ],
+    "dropout": 0.2,
+    "optimizer": "adam",
+    "learning_rate": 0.001,
+    "eval_every_examples": 1000,
+    "threads": 2
+  },
+  "command": [
+    "python",
+    "-m",
+    "src.train_online",
+    "--config",
+    "configs/mnist_9000.yaml",
+    "--output",
+    "data/processed/mnist_9000_seed42"
+  ],
+  "started_utc": "2026-10-30T02:10:36.140052+00:00",
+  "device": "cpu",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "processor": "Intel64 Family 6 Model 186 Stepping 3, GenuineIntel",
+  "python": "3.14.2 (tags/v3.14.2:df79316, Dec  5 2025, 17:18:21) [MSC v.1944 64 bit (AMD64)]",
+  "packages": {
+    "torch": "2.14.1",
+    "torchvision": "0.29.1",
+    "numpy": "2.5.2",
+    "PyYAML": "6.0.3",
+    "matplotlib": "3.11.2"
+  },
+  "metrics": "macro precision, recall, F1 across all ten classes; zero division = 0",
+  "training_seconds": 133.06626169988886,
+  "comparison_status": "provisional: shared CIFAR online trainer/settings unpublished",
+  "examples_processed": 9000,
+  "updates": 282,
+  "total_wall_seconds": 194.6194911999628,
+  "command_note": "Portable equivalent; original machine-specific paths remain in local run.json."
+}
