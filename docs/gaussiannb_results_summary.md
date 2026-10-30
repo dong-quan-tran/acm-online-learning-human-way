@@ -113,4 +113,21 @@ Output:
 The generated graph file was confirmed to exist.
 
 **Total: 11 tests passed, 0 failed.**
+### Training Stream Verification
+
+To verify consistency with VN.LD's experiment, I compared the GaussianNB loader's training indices against VN.LD's saved stream file (`online_c20_m42_s42_20261028-173041_split.json`).
+
+Both contained exactly 9,000 training samples. The comparison confirmed that all sample IDs were identical and appeared in exactly the same order.
+
+**Verification output:**
+
+```text
+Nguyen's samples: 9000
+GaussianNB samples: 9000
+Same sample IDs: True
+Exact training order matches: True
+All 9,000 verified: True
+```
+
+This confirms that GaussianNB used the same training sample sequence as VN.LD's saved stream, ruling out differences in training sample selection and order as explanations for the observed accuracy difference.
 
