@@ -12,6 +12,7 @@ class FakeMNIST:
     def __init__(self, root, train, download, transform):
         self.size = 60000 if train else 10000
         self.transform = transform
+        self.targets = torch.arange(self.size) % 10
 
     def __len__(self):
         return self.size
@@ -122,3 +123,40 @@ def test_required_9000_1000_subset():
 def test_invalid_subset_size(train_size):
     with pytest.raises(ValueError, match="train_size"):
         mnist_data.MNISTStream(train_size=train_size, validation_size=1000)
+
+
+def test_literal_profile_stratified_membership_and_eval_transform():
+    kwargs = dict(profile="nguyen_literal", membership_strategy="nguyen_stratified",
+                  train_size=9000, validation_size=1000)
+    train = mnist_data.MNISTStream(**kwargs)
+    val = mnist_data.MNISTStream("validation", **kwargs)
+    assert len(train) == 9000 and len(val) == 1000
+    assert not set(train.indices) & set(val.indices)
+    assert torch.bincount(train.source.targets[train.indices]).tolist() == [900]*10
+    assert torch.bincount(val.source.targets[val.indices]).tolist() == [100]*10
+    changed = mnist_data.MNISTStream(stream_seed=43, **kwargs)
+    assert set(changed.indices) == set(train.indices) and changed.indices != train.indices
+    image, label, sample_id = val[0]
+    assert image.shape == (3,32,32) and image.dtype == torch.float32
+    assert 0 <= image.min() <= image.max() <= 1
+    assert torch.equal(image[0],image[1]) and torch.equal(image[1],image[2])
+    assert torch.equal(val[0][0],image)  # evaluation never augments
+    assert sample_id == f"train:{val.indices[0]}"
+    torch.manual_seed(42); a=train[0][0]
+    torch.manual_seed(42); b=train[0][0]
+    assert torch.equal(a,b) and a.shape == (3,32,32)
+
+
+def test_literal_model_has_same_input_head_and_single_normalization():
+    from pathlib import Path
+    import yaml
+    config=yaml.safe_load((Path(__file__).parents[1]/"configs/mnist_nguyen_literal.yaml").read_text())
+    assert config["in_channels"] == 3 and config["num_outputs"] == 100
+    assert config["eval_batch_size"] == 256 and config["num_workers"] == 2
+    assert config["mean"] == [0.5071,0.4865,0.4409]
+    assert config["std"] == [0.2673,0.2564,0.2762]
+    model=SmallResNet(num_classes=100,in_channels=3,mean=config["mean"],std=config["std"])
+    assert model.features[0][0].in_channels == 3
+    assert model.classifier[1].out_features == 100
+    image = mnist_data.get_mnist_transform("nguyen_literal",False)(Image.new("L",(28,28),255))
+    assert image.min() == image.max() == 1  # model alone normalizes

@@ -1,0 +1,21 @@
+Setting,Khoi — newest MNIST,Nguyen — CIFAR SmallResNet,Alka — CIFAR GaussianNB
+Dataset / real labels,MNIST / digits 0–9 (10 classes),CIFAR-100 / labels 0–19 (20 classes),CIFAR-100 / labels 0–19 (20 classes)
+Model,Three-stage SmallResNet,Three-stage SmallResNet,Gaussian Naive Bayes
+Original image,1×28×28 grayscale,3×32×32 RGB,3×32×32 RGB
+Model input,"3×32×32: resized, grayscale copied to RGB",3×32×32 native RGB,"Flattened 3,072 scaled pixel features"
+Output head,100; unmasked predictions,100; unmasked predictions,20 modeled classes
+Train / validation,"9,000 / 1,000; audit verified","9,000 / 1,000; team record","9,000 / 1,000; team record"
+Per-class train / validation,900 / 100 × 10 classes,450 / 50 × 20 classes,450 / 50 × 20 classes (reported shared split)
+Training rule,One pass; no replay,One pass; no replay,One pass; no replay
+Batch / updates / final batch,32 / 282 / 8,32 / 282 / 8,32 / 282 / 8
+Model / split / stream seeds,42 / 42 / 42,42 / 42 / 42,42 / shared split / 42
+Optimizer / update,AdamW,AdamW,partial_fit on one persistent GaussianNB
+Max learning rate / schedule,0.0005 / OneCycleLR; pct_start 0.15,0.0005 / OneCycleLR; pct_start 0.15,Not applicable
+Weight decay,0.0005,0.0005,Not applicable
+Dropout,0.2,0.2,Not applicable
+Train preprocessing,"[0,1]; crop 32, reflect pad 4; horizontal flip 0.5","[0,1]; crop 32, reflect pad 4; horizontal flip 0.5","[0,1], flatten; no crop or flip"
+Model normalization,"CIFAR mean/std, once inside model","CIFAR mean/std, once inside model",None
+Validation preprocessing,"Resize+RGB adaptation, then scaling only",Scaling only; no random augmentation,"[0,1], flatten; no random augmentation"
+Validation batch / workers,256 / 2,256 / 2,32 / not recorded in exported run metadata
+Device,CPU; CUDA unavailable,Tesla T4 CUDA (team report),CPU (team report)
+Checkpoint comparison,"0 then same complete-batch counts through 9,000","0 then same complete-batch counts through 9,000",Same nonzero counts; no pretraining prediction available
