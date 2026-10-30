@@ -151,4 +151,15 @@ I think GaussianNB performed better initially because it could learn basic patte
 This comparison is based on one run per model. Also, training times aren't directly comparable because the models ran on different hardware and used different training methods.
 
 As a next step, I would test both models with multiple random seeds to see whether the accuracy difference stays consistent.
+### Reproduce Comparison Graph
+
+The combined results are saved in `results/gaussiannb_vs_resnet_results.csv`.
+
+To regenerate the comparison graph, run:
+
+```bash
+RESULTS_CSV=results/gaussiannb_vs_resnet_results.csv FIGURE_NAME=gaussiannb_vs_resnet.png python src/plot_results.py
+```
+
+Output: `results/figures/gaussiannb_vs_resnet.png`
 
