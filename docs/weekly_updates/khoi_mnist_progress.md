@@ -1,3 +1,26 @@
+# Completed MNIST run — current status
+
+The `mnist_seed42_complete` experiment has finished: 54,000 training examples,
+1,688 updates, final validation accuracy 99.0833%, macro precision 99.1030%,
+macro recall 99.0723%, and macro F1 99.0846%. Training compute was 2895.75s;
+run wall time was 5430.79s on CPU. All five local run artifacts exist.
+Saved membership was checked: 54,000 unique training rows, 6,000 unique
+validation rows, zero overlap, covering all 60,000 source training rows.
+
+The user's terminal evidence reports 23 passed, 2 warnings in 319.83s.
+The warnings themselves were not provided. This is not a fresh test-suite rerun.
+
+See `notebooks/mnist_cifar_comparison.ipynb` for executed saved-result analysis
+and `results/mnist_seed42_complete/` for the CSV, run metadata, exact membership
+and original chart. Model weights and dataset images remain local and ignored.
+The notebook's GaussianNB comparison is context only; the requested same-model
+CIFAR comparison and shared trainer parity still await Nguyen's online artifacts.
+
+The sections below are historical progress notes and do not describe the final
+run's status.
+
+---
+
 # Khoi MNIST assignment progress
 
 **Update:** the standalone one-pass runner is now implemented and the initial
@@ -127,3 +150,29 @@ checkpoint: 33024 of 54000 examples, validation accuracy 0.9751667).
 No final training result is claimed. Dataset files, live CSV, saved row order
 and model artifacts remain local under ignored data/raw and data/processed.
 The source commit includes the reproducible run command, not a completed run.
+
+
+## Saved-checkpoint reliability audit
+
+Re-evaluated the original `model.pt` on exactly the saved 6,000 validation
+source rows, loaded directly from the original MNIST training source. Both
+configured loader memberships exactly match the saved rows; zero overlap.
+The checkpoint achieved 5,945 correct and 55 mistakes. All four metrics
+reproduced the final CSV within 1e-12; model state remained unchanged.
+No retraining or official test-set evaluation was performed.
+
+```powershell
+python -m src.audit_mnist --run data/processed/mnist_seed42_complete --output results/mnist_seed42_complete/audit
+$env:PYTEST_DEBUG_TEMPROOT=(Resolve-Path .pytest_cache).Path
+$env:HF_HUB_OFFLINE='1'
+$env:HF_DATASETS_OFFLINE='1'
+python -m pytest -v --tb=short
+```
+
+Fresh suite: **23 passed in 48.87s**, no warnings reported. The earlier two
+warning messages were not available, so no cause is inferred.
+`audit/` contains exact predictions, the checkpoint SHA-256, matching metrics,
+a confusion matrix and first 20 mistakes. The comparison notebook was rerun:
+all five code cells executed and passed notebook validation. Diagnostic plots
+were visually checked. This confirms this run's consistency, not multi-seed
+robustness or a controlled MNIST/CIFAR comparison.

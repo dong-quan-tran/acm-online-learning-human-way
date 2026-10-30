@@ -69,3 +69,48 @@ comparison. The older class-incremental notebook is not a comparable one-pass
 CIFAR run. The assignment's MNIST-versus-CIFAR results discussion remains
 pending those artifacts; a single MNIST seed is an initial run, not a repeated
 final estimate.
+
+
+## Completed results and comparison notebook
+
+Open `notebooks/mnist_cifar_comparison.ipynb` and select Run All to reproduce
+saved-result analysis without training. Optional notebook dependencies:
+`python -m pip install nbformat nbclient ipykernel`.
+
+The portable submission artifacts are in `results/mnist_seed42_complete/`.
+They contain the actual completed CSV, run metadata, original membership, and
+learning curve. Weights and downloaded images remain excluded. The archived
+run command uses portable paths; the original metadata remains in the local
+run folder.
+
+Initial notebook verification executed all four original code cells. The later
+saved-checkpoint audit below reran the tests and expanded notebook; no retraining
+was performed.
+The same-model CIFAR comparison remains pending its unpublished source artifacts;
+GaussianNB is displayed only as explicitly labelled context.
+
+
+## Saved-checkpoint reliability audit
+
+Re-evaluated the original `model.pt` on exactly the saved 6,000 validation
+source rows, loaded directly from the original MNIST training source. Both
+configured loader memberships exactly match the saved rows; zero overlap.
+The checkpoint achieved 5,945 correct and 55 mistakes. All four metrics
+reproduced the final CSV within 1e-12; model state remained unchanged.
+No retraining or official test-set evaluation was performed.
+
+```powershell
+python -m src.audit_mnist --run data/processed/mnist_seed42_complete --output results/mnist_seed42_complete/audit
+$env:PYTEST_DEBUG_TEMPROOT=(Resolve-Path .pytest_cache).Path
+$env:HF_HUB_OFFLINE='1'
+$env:HF_DATASETS_OFFLINE='1'
+python -m pytest -v --tb=short
+```
+
+Fresh suite: **23 passed in 48.87s**, no warnings reported. The earlier two
+warning messages were not available, so no cause is inferred.
+`audit/` contains exact predictions, the checkpoint SHA-256, matching metrics,
+a confusion matrix and first 20 mistakes. The comparison notebook was rerun:
+all five code cells executed and passed notebook validation. Diagnostic plots
+were visually checked. This confirms this run's consistency, not multi-seed
+robustness or a controlled MNIST/CIFAR comparison.
