@@ -75,4 +75,4 @@ RESULTS_CSV=results/gaussiannb_results.csv python src/plot_results.py
 
 The graph is saved to:
 
-`results/
+`results/figures/gaussiannb_learning_curve.png`
