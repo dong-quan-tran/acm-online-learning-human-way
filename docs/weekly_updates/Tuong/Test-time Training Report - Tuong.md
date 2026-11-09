@@ -10,6 +10,7 @@
 
 | Method | Test-time updates | Between test images |
 |---|---|---|
+| Supervised frozen model | None; source training uses classification only | Keep the source model |
 | Frozen joint model | None | Keep the source model |
 | Standard TTT | Feature extractor | Reset to the source model |
 | Online TTT | Feature extractor | Keep the updated model |
@@ -20,6 +21,14 @@ On CIFAR-10.1, Standard TTT reduced error from 16.7% for the frozen joint model 
 
 ## Changes needed in our pipeline
 
-Our SmallResNet currently trains on class labels in one pass and has no rotation head. Add a rotation head and repeat source training using classification loss and rotation loss. However, A new, untrained rotation head is insufficient. Use **GroupNorm**, which normalizes groups of features within each image, as the paper does for test-time updates using versions of one image. Train the frozen joint model with GroupNorm too.
+Our SmallResNet currently trains on class labels in one pass and has no rotation head. Add a rotation head and repeat source training using classification loss and rotation loss. However, a new, untrained rotation head is insufficient. Use **GroupNorm**, which normalizes groups of features within each image, as the paper does for test-time updates using versions of one image. Train the frozen joint model with GroupNorm too.
 
-Keep classes 0-19 and the 100-output classification head. Compare the frozen joint model, Standard TTT, and Online TTT using the same source model, test images, and image order. Test one fixed noise condition and clean images. Keep class labels outside test-time updates, choose settings on separate development data, and report accuracy and computation time. Our pipeline has no TTT results yet.
+Keep classes 0-19 and the 100-output classification head. Compare supervised frozen, frozen joint, Standard TTT, and Online TTT. Start frozen joint and both TTT modes from the same jointly trained source checkpoint; use matched test images, image order, and preprocessing. Test one fixed noise condition and clean images. Keep class labels outside test-time updates, choose settings on separate development data, and report accuracy and computation time. Our pipeline has no TTT results yet.
+
+To test reset behavior alone, match adaptation steps and other update settings between standard and online TTT, and state how optimizer state resets. The paper uses ten steps per image for standard TTT and one for online TTT. If using those different budgets, report them clearly rather than treating the comparison as a reset-only test.
+
+## Reference
+
+Sun, Y., Wang, X., Liu, Z., Miller, J., Efros, A. A., and Hardt, M. (2020). Test-Time Training with Self-Supervision for Generalization under Distribution Shifts. ICML. https://proceedings.mlr.press/v119/sun20b.html
+
+Editorial note, November 9, 2026: added the reference and supervised-frozen baseline, fixed capitalization, and clarified matched checkpoints and update budgets. The original submission remains in Git history and on Tuong's branch.
