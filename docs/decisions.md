@@ -1,28 +1,35 @@
 # Project Decisions
 
-Updated: October 13, 2026
+Updated: November 9, 2026
 
-| Decision | Reason |
+## Current Decision: Two Separate TTT Experiments
+
+Dong Quan reports that Nguyen and Tuong presented their plans to Dr. Athitsos and received approval to proceed. The exact meeting date is not recorded here. This is a project-lead report of approval, not a quoted advisor statement.
+
+| Decision | Meaning |
 |---|---|
-| Focus on online learning | Follow Dr. Athitsos's suggestion to study learning from incoming data |
-| Keep CIFAR-100 | Reuse the team's existing work |
-| Mix classes in random order | Keep the class distribution fixed instead of introducing separate class groups |
-| Start with classes 0–19, then use all 100 | Check the small pipeline before expanding |
-| Use one pass with no replay | Start with a simple online baseline |
-| Track accuracy as examples arrive | Measure learning progress rather than Task 1 forgetting |
-| Compare with offline training later | Show what extra passes through the data provide |
-| Set EWC aside for now | Keep forgetting prevention as possible future work |
-| Start with seed 42 | Make early runs easier to repeat |
+| Begin rotation-based test-time training | Learn from rotation targets without using test class labels |
+| Keep two experiments separate | Nguyen uses CIFAR-10/CIFAR-10-C; Tuong uses CIFAR-100 classes 0-19 with clean and fixed-noise conditions |
+| Use matched frozen baselines | Separate the effect of joint source training from test-time updates |
+| Check evaluation before full runs | Keep labels outside adaptation and state prediction timing and reset rules |
+| Treat implementation settings as open until recorded | Dataset splits, budgets, learning rates, steps, and noise settings are team choices |
+| Preserve prior work | Do not overwrite historical results or delete member branches during closeout |
 
-## Advisor Confirmation — October 13, 2026
+The earlier November 1-7 assignment asked Nguyen for a small Tent feasibility trial. The newly approved TTT direction replaces that trial as his next experiment. Credit the presentation and approved plan separately from implementation; the original trial must not be marked completed without evidence. Tent/EATA remain possible later comparisons.
 
-Dr. Athitsos replied:
+Tuong's and Khoi's submitted reviews cover one paper each. The original two-paper requirement remains a recorded gap, not a completed item. The coordinator should state whether to carry it forward or waive it; this update does not decide that.
+
+Current work: [November 9 assignment](11_9_assigment.md).
+Closeout: [November 1-7 wrap-up](weekly_updates/2026-11-07_wrap_up.md).
+
+## Historical Decision: October 13, 2026
+
+Dr. Athitsos replied about the earlier labeled online-learning setting:
 
 > Yes, this is exactly what I had in mind.
 
-He confirmed our understanding: mix examples from a fixed class set in random order, learn from small incoming batches in one pass without replay, and track accuracy as more data arrives. EWC remains a possible later extension.
+That setting mixes examples from a fixed class set in random order, learns from small labeled batches in one pass without replay, and tracks accuracy as examples arrive.
 
-The online-learning direction is confirmed. Batch size, model details, optimizer, evaluation intervals, and comparison budgets remain team implementation choices. Earlier pending-confirmation notes about the direction are superseded by this update.
+Historical choices were CIFAR-100, classes 0-19 for debugging, a later expansion to all 100 classes, an initial seed of 42, and a later offline comparison. EWC was deferred. Model details, batch size, optimizer, evaluation intervals, and budgets remained team choices.
 
-See `experiment_protocol.md` for experiment rules and
-`two_week_assignment.md` for team tasks.
+The older experiment protocol and two-week assignment are historical references. They must not be read as the current TTT protocol.
