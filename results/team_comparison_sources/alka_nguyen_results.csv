@@ -1,0 +1,20 @@
+mode,run_id,model_seed,stream_seed,num_classes,examples_processed,updates,passes,batch_size,learning_rate,optimizer,eval_split,accuracy,training_seconds
+online,gaussiannb_seed42,42,42,20,1024,32,0.1137777777777777,32,,GaussianNB partial_fit,validation,0.228,0.0872522370004844
+online,gaussiannb_seed42,42,42,20,2016,63,0.224,32,,GaussianNB partial_fit,validation,0.221,0.1871122870004455
+online,gaussiannb_seed42,42,42,20,3008,94,0.3342222222222222,32,,GaussianNB partial_fit,validation,0.221,0.3006688550001399
+online,gaussiannb_seed42,42,42,20,4000,125,0.4444444444444444,32,,GaussianNB partial_fit,validation,0.207,0.3758664460006002
+online,gaussiannb_seed42,42,42,20,5024,157,0.5582222222222222,32,,GaussianNB partial_fit,validation,0.208,0.4610267349996775
+online,gaussiannb_seed42,42,42,20,6016,188,0.6684444444444444,32,,GaussianNB partial_fit,validation,0.216,0.5404997939997429
+online,gaussiannb_seed42,42,42,20,7008,219,0.7786666666666666,32,,GaussianNB partial_fit,validation,0.206,0.6227213360007227
+online,gaussiannb_seed42,42,42,20,8000,250,0.8888888888888888,32,,GaussianNB partial_fit,validation,0.207,0.7078440650011544
+online,gaussiannb_seed42,42,42,20,9000,282,1.0,32,,GaussianNB partial_fit,validation,0.206,0.7875212570017993
+online,resnet_nguyen_seed42,42,42,20,0,0,0.0,32,0.0005,AdamW,validation,0.0,0.0
+online,resnet_nguyen_seed42,42,42,20,1024,32,0.11377777777777778,32,0.0005,AdamW,validation,0.156,0.918852478
+online,resnet_nguyen_seed42,42,42,20,2016,63,0.224,32,0.0005,AdamW,validation,0.214,1.388647189
+online,resnet_nguyen_seed42,42,42,20,3008,94,0.3342222222222222,32,0.0005,AdamW,validation,0.252,1.836316721
+online,resnet_nguyen_seed42,42,42,20,4000,125,0.4444444444444444,32,0.0005,AdamW,validation,0.284,2.27928413
+online,resnet_nguyen_seed42,42,42,20,5024,157,0.5582222222222222,32,0.0005,AdamW,validation,0.316,2.742259089
+online,resnet_nguyen_seed42,42,42,20,6016,188,0.6684444444444444,32,0.0005,AdamW,validation,0.378,3.21310507
+online,resnet_nguyen_seed42,42,42,20,7008,219,0.7786666666666666,32,0.0005,AdamW,validation,0.418,3.664998953
+online,resnet_nguyen_seed42,42,42,20,8000,250,0.8888888888888888,32,0.0005,AdamW,validation,0.42,4.149055306
+online,resnet_nguyen_seed42,42,42,20,9000,282,1.0,32,0.0005,AdamW,validation,0.432,4.650987427

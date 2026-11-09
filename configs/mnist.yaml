@@ -1,0 +1,21 @@
+# MNIST-specific starting settings; not a claim of CIFAR trainer parity.
+dataset: mnist
+model: SmallResNet
+in_channels: 1
+num_classes: 10
+model_seed: 42
+split_seed: 42
+stream_seed: 42
+validation_size: 6000
+batch_size: 32
+passes: 1
+replay: false
+preprocessing: ToTensor
+mean: [0.0]
+std: [1.0]
+dropout: 0.2
+# Provisional MNIST baseline; CIFAR optimizer/evaluation parity is unverified.
+optimizer: adam
+learning_rate: 0.001
+eval_every_examples: 1000
+threads: 2
