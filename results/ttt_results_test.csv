@@ -1,0 +1,7 @@
+
+experiment,condition,seed,checkpoint,dataset,split,corruption,severity,accuracy,runtime_seconds,update_count
+A,joint_frozen,42,model_A,CIFAR-10-C,test,gaussian_noise,3,0.60,10,0
+A,standard_ttt,42,model_A,CIFAR-10-C,test,gaussian_noise,3,0.65,20,100
+A,online_ttt,42,model_A,CIFAR-10-C,test,gaussian_noise,3,0.57,25,150
+B,joint_frozen,42,model_B,CIFAR-100-20,test,clean,none,0.70,8,0
+B,online_ttt,42,model_B,CIFAR-100-20,test,clean,none,0.72,18,100
