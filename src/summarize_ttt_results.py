@@ -2,7 +2,7 @@
 from pathlib import Path
 import pandas as pd
 
-RESULTS_FILE = Path("results/ttt_results.csv")
+RESULTS_FILE = Path("results/ttt_results_test.csv")
 
 def main():
     if not RESULTS_FILE.exists():
