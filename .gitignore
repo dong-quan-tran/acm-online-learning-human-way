@@ -24,3 +24,4 @@ results/figures/*.png
 .DS_Store
 .vscode/
 .idea/
+/.agents/

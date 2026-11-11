@@ -1,0 +1,63 @@
+experiment: "B"
+dataset: "CIFAR-100-20"
+num_classes: 20
+num_outputs: 100
+num_groups: 16
+dropout: 0.2
+in_channels: 3
+mean: [0.5071, 0.4865, 0.4409]
+std: [0.2673, 0.2564, 0.2762]
+
+source_training:
+  epochs: 15
+  batch_size: 64
+  optimizer: "adamw"
+  learning_rate: 0.001
+  weight_decay: 0.0005
+  scheduler: "onecyclelr"
+  pct_start: 0.15
+  lambda_rot: 1.0
+  augment: true
+
+source_train:
+  epochs: 15
+  batch_size: 64
+  optimizer: "adamw"
+  learning_rate: 0.001
+  weight_decay: 0.0005
+  scheduler: "onecyclelr"
+  pct_start: 0.15
+  lambda_rot: 1.0
+  augment: true
+
+adaptation:
+  ttt_optimizer: "sgd"
+  ttt_momentum: 0.0
+  ttt_steps: 1
+  ttt_lr: 0.001
+  test_batch_size: 1
+  lambda_rot: 1.0
+
+corruption:
+  type: "gaussian_noise"
+  sigma: 0.08
+  severity: 3
+  noise_space: "pixel_[0,1]_clamped"
+
+evaluation:
+  conditions:
+    - "supervised_frozen"
+    - "joint_frozen"
+    - "standard_ttt"
+    - "online_ttt"
+  window_size: 200
+  seeds: [42, 43, 44]
+  pilot_seed: 42
+
+paths:
+  shared_c20_membership: "data/shared_c20_membership.json"
+  exp_b_test_membership: "data/exp_b_test_membership.json"
+  checkpoint_dir: "checkpoints"
+  output_dir: "results"
+  summary_csv: "results/ttt_summary.csv"
+  window_summary_csv: "results/ttt_window_summary.csv"

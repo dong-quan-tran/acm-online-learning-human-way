@@ -1,0 +1,41 @@
+{
+  "experiment": "B",
+  "split": "validation",
+  "num_samples": 1000,
+  "seed": 42,
+  "joint_checkpoint": "checkpoints/exp_b_joint_seed42.pt",
+  "source_joint_val_acc": 0.625,
+  "source_joint_val_rot_acc": 0.614,
+  "candidate_evaluations": [
+    {
+      "ttt_lr": 0.0001,
+      "val_clean_acc": 0.624,
+      "val_noisy_acc": 0.301,
+      "avg_acc": 0.4625,
+      "clean_delta_vs_source": -0.001
+    },
+    {
+      "ttt_lr": 0.0005,
+      "val_clean_acc": 0.628,
+      "val_noisy_acc": 0.305,
+      "avg_acc": 0.4665,
+      "clean_delta_vs_source": 0.003
+    },
+    {
+      "ttt_lr": 0.001,
+      "val_clean_acc": 0.630,
+      "val_noisy_acc": 0.310,
+      "avg_acc": 0.4700,
+      "clean_delta_vs_source": 0.005
+    },
+    {
+      "ttt_lr": 0.005,
+      "val_clean_acc": 0.595,
+      "val_noisy_acc": 0.345,
+      "avg_acc": 0.4700,
+      "clean_delta_vs_source": -0.030
+    }
+  ],
+  "selected_ttt_lr": 0.001,
+  "selection_rationale": "ttt_lr=0.001 achieves the highest clean validation accuracy (63.00%, +0.5pp over joint baseline) and ties for highest average accuracy (47.00%), while providing solid noise adaptation (31.00%). Candidate 0.005 achieves 34.50% on noise but severely degrades clean accuracy by 3.5pp (dropping to 59.50%), violating Dr. Athitsos's requirement of not hurting clean performance. Therefore, ttt_lr=0.001 is locked for evaluation."
+}

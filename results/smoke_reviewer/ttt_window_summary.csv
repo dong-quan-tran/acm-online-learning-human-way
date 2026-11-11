@@ -1,0 +1,9 @@
+run_id,experiment,condition,seed,window_index,start_sample,end_sample,window_size,correct_count,accuracy
+exp_b_supervised_frozen_clean_seed42,B,supervised_frozen,42,0,0,128,128,8,0.0625
+exp_b_joint_frozen_clean_seed42,B,joint_frozen,42,0,0,128,128,8,0.0625
+exp_b_standard_ttt_clean_seed42,B,standard_ttt,42,0,0,128,128,8,0.0625
+exp_b_online_ttt_clean_seed42,B,online_ttt,42,0,0,128,128,7,0.0546875
+exp_b_supervised_frozen_gaussian_noise_seed42,B,supervised_frozen,42,0,0,128,128,8,0.0625
+exp_b_joint_frozen_gaussian_noise_seed42,B,joint_frozen,42,0,0,128,128,8,0.0625
+exp_b_standard_ttt_gaussian_noise_seed42,B,standard_ttt,42,0,0,128,128,8,0.0625
+exp_b_online_ttt_gaussian_noise_seed42,B,online_ttt,42,0,0,128,128,7,0.0546875
