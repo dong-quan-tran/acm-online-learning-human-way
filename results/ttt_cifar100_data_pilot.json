@@ -1,0 +1,71 @@
+{
+  "dataset": "torchvision CIFAR-100 official test, fine classes 0-19; data-only pilot",
+  "development_ids": [
+    "test:8045",
+    "test:598",
+    "test:3397",
+    "test:2464",
+    "test:9707",
+    "test:8281",
+    "test:6309",
+    "test:7544",
+    "test:319",
+    "test:1045",
+    "test:2302",
+    "test:7368",
+    "test:6905",
+    "test:8958",
+    "test:8995",
+    "test:5285",
+    "test:5555",
+    "test:3513",
+    "test:9781",
+    "test:9092"
+  ],
+  "evaluation_ids": [
+    "test:2804",
+    "test:2060",
+    "test:141",
+    "test:4941",
+    "test:2042",
+    "test:1672",
+    "test:2822",
+    "test:1136",
+    "test:49",
+    "test:2712",
+    "test:9452",
+    "test:8126",
+    "test:7571",
+    "test:7117",
+    "test:9485",
+    "test:5244",
+    "test:816",
+    "test:1934",
+    "test:161",
+    "test:5882"
+  ],
+  "seed": 42,
+  "preprocessing": {
+    "transform": "ToTensor",
+    "shape": [
+      3,
+      32,
+      32
+    ],
+    "range": [
+      0,
+      1
+    ],
+    "normalization": "none"
+  },
+  "corruption": {
+    "kind": "Gaussian noise",
+    "std": 0.1,
+    "seed": 42,
+    "clip": [
+      0,
+      1
+    ],
+    "seed_scope": "source image ID"
+  }
+}

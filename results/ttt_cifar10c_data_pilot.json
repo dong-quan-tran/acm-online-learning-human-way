@@ -1,0 +1,45 @@
+{
+  "dataset": "Official CIFAR-10 and CIFAR-10-C; data-only pilot",
+  "development_ids": [
+    "test:6583",
+    "test:308",
+    "test:2690",
+    "test:2286",
+    "test:7273",
+    "test:6889",
+    "test:9068",
+    "test:856",
+    "test:4222",
+    "test:259"
+  ],
+  "evaluation_ids": [
+    "test:2443",
+    "test:7438",
+    "test:5922",
+    "test:234",
+    "test:5581",
+    "test:7631",
+    "test:1207",
+    "test:1076",
+    "test:853",
+    "test:1386"
+  ],
+  "seed": 42,
+  "preprocessing": {
+    "shape": [
+      3,
+      32,
+      32
+    ],
+    "range": [
+      0,
+      1
+    ],
+    "normalization": "none"
+  },
+  "corruption": {
+    "name": "gaussian_noise",
+    "severity": 1,
+    "source": "https://zenodo.org/records/2535967"
+  }
+}
