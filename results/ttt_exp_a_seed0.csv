@@ -1,0 +1,10 @@
+
+experiment,condition,seed,checkpoint,dataset,split,corruption,severity,accuracy,runtime_seconds,update_count
+A,supervised_frozen,0,supervised_best.pt,CIFAR-10,evaluation,clean,none,0.907875,,0
+A,joint_frozen,0,joint_best.pt,CIFAR-10,evaluation,clean,none,0.919625,,0
+A,standard_ttt,0,joint_best.pt,CIFAR-10,evaluation,clean,none,0.905000,945,80000
+A,online_ttt,0,joint_best.pt,CIFAR-10,evaluation,clean,none,0.905375,103,8000
+A,supervised_frozen,0,supervised_best.pt,CIFAR-10,evaluation,gaussian_noise,5,0.419750,,0
+A,joint_frozen,0,joint_best.pt,CIFAR-10,evaluation,gaussian_noise,5,0.401500,,0
+A,standard_ttt,0,joint_best.pt,CIFAR-10,evaluation,gaussian_noise,5,0.507125,944,80000
+A,online_ttt,0,joint_best.pt,CIFAR-10,evaluation,gaussian_noise,5,0.740500,103,8000
