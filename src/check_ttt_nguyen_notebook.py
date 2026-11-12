@@ -3,6 +3,7 @@ import argparse
 import ast
 import copy
 import hashlib
+import inspect
 import json
 import math
 import random
@@ -18,12 +19,13 @@ from torchvision.datasets import CIFAR10
 from src.ttt_evaluation import cifar10c_image
 
 REVIEWED_SOURCE_SHA256 = "72ecb10b08a32a2ad0add11a9905f75ad6d28afb0a639e0a9519f2b2805c7197"
+REVIEW_COPY_SHA256 = "1346c2f181301f11ee227ed92e822de62f2394b734422c2aa004efe7e5eca1dd"
 
 
 def load_reviewed_definitions(path):
     export = json.loads(path.read_bytes())
     source = export["blob"]["source"] if "blob" in export else path.read_text(encoding="utf-8")
-    if hashlib.sha256(source.encode()).hexdigest() != REVIEWED_SOURCE_SHA256:
+    if hashlib.sha256(source.encode()).hexdigest() not in {REVIEWED_SOURCE_SHA256, REVIEW_COPY_SHA256}:
         raise ValueError("Notebook differs from the reviewed version; review it before running this check")
     notebook = json.loads(source)
     scope = dict(np=np, torch=torch, nn=nn, F=F, copy=copy, time=time, math=math,
@@ -115,14 +117,25 @@ def main():
             assert all(torch.equal(value, model.state_dict()[key]) for key, value in initial.items())
             print(f"PASS: {name} {mode}: two predictions, expected state behavior, independent rerun")
     hook.remove()
-    try:
-        bad, _ = scope["run_ttt"](model, noisy, "online", 0.001, 1, order=[0, 0], log_every=0)
-    except ValueError:
-        print("PASS: duplicate order rejected")
+    failed = False
+    for order in ([0, 0], [0], [0, 2], [0.0, 1.0]):
+        try:
+            scope["run_ttt"](model, noisy, "online", 0.001, 1, order=order, log_every=0)
+        except ValueError:
+            print(f"PASS: invalid order rejected: {order}")
+        except (IndexError, TypeError):
+            print(f"FAIL: invalid order caused an indexing error instead of validation: {order}")
+            failed = True
+        else:
+            print(f"FAIL: invalid order accepted: {order}")
+            failed = True
+    if "y" in inspect.signature(scope["run_ttt"]).parameters:
+        print("FAIL: run_ttt accepts class labels for progress logging")
+        failed = True
     else:
-        if np.any(bad == -1):
-            print("FAIL: duplicate order accepted; at least one prediction missing")
-    print("REVIEW: run_ttt accepts class labels for progress logging; move scoring outside it")
+        print("PASS: adaptation runner has no class-label parameter")
+    if failed:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

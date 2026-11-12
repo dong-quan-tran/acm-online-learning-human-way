@@ -37,10 +37,10 @@ Do not rename corruption variants to make an overlap check pass.
 | --- | --- | --- |
 | Source-ID overlap / saved order | Pass: notebook's 2,000 development / 8,000 evaluation rows are disjoint | Pass: published 9,000 train / 1,000 development / 2,000 test rows checked |
 | Corrupted input preparation | Pass: official Gaussian noise severity 5 aligned to clean labels | Pass: published clean/noisy order and repeatable noise at sigma 0.08 |
-| Label-free callback and one prediction per image | **Needs fixes:** class labels accepted for progress logging; duplicate order can skip a prediction | Pass on inspected adapter and valid real-image stream |
-| Frozen invariance; standard reset; online carry | Pass with randomly initialized model | Pass with randomly initialized model |
-| Independent model and optimizer state | Base model unchanged on rerun; new optimizer per call by inspection | Pass: fresh model in smoke test, stateless optimizer test |
-| Real end-to-end pilot | Code ran on two clean and two paired corrupted images; joint checkpoint pending | All four conditions ran on 128 clean and 128 paired noisy images; trained checkpoints pending |
+| Label-free callback and one prediction per image | Pass in corrected review copy; original published notebook still has both findings | Pass on inspected adapter and valid real-image stream |
+| Frozen invariance; standard reset; online carry | Pass with randomly initialized model | Pass with published trained checkpoints |
+| Independent model and optimizer state | Base model unchanged on rerun; new optimizer per call by inspection | Pass: fresh checkpoint copy per condition; stateless SGD verified by unit tests |
+| Real end-to-end pilot | Corrected code passed on two clean and two paired corrupted images with random weights | Pass with published trained checkpoints: 16 clean and 16 paired noisy images, all four conditions |
 
 Run the fixture checks from the repository root:
 
@@ -50,11 +50,11 @@ python -m pytest tests/test_ttt_evaluation.py -q
 
 ## Needed for the real pilots
 
-- Nguyen: revised notebook with the two fixes below, the trained
-  `joint_best.pt`, and its saved config/splits. Share `supervised_best.pt`
-  if the supervised frozen baseline should also be checked.
-- Tuong: `exp_b_joint_seed42.pt` and `exp_b_supervised_seed42.pt` referenced
-  in the report. The published split, settings and adapter are already available.
+- Nguyen: the corrected review copy is ready to adopt. The original executed
+  notebook reports a completed run; its trained weights were not available
+  for independent replay. A trained-weight replay is separate from this pilot.
+- Tuong: no files needed for the pilot. Both trained checkpoints, the split,
+  settings, and adapter are published at revision `339978d`.
 - Both: confirm which parameters are allowed to update, optimizer initialization,
   adaptation steps, and prediction timing. Review adapters for label access and
   verify heads stay frozen before accepting pilot results.
@@ -159,5 +159,77 @@ python -m pytest tests/test_ttt_exp_b.py -q
 python -m src.ttt_cifar100 --smoke-test --device cpu --output results/khoi-smoke
 ```
 
-Neither smoke run verifies trained-model accuracy. Do not use the smoke
-accuracy values as findings or rerun source training just for this audit.
+These initial smoke runs used randomly initialized models. Their accuracy
+values are not experiment findings.
+
+### Experiment B: trained checkpoint follow-up
+
+[Revision `339978d`](https://github.com/dong-quan-tran/acm-online-learning-human-way/tree/339978d)
+adds the trained supervised and joint seed-42 checkpoints and the result CSVs.
+The evaluation code and configuration are unchanged from `317aea7`.
+
+The independent CPU check loaded both checkpoints and ran every condition on
+the first 16 official evaluation rows and their paired noisy versions. All
+eight runs returned exactly one prediction per image in the saved order.
+Frozen runs made zero updates. Standard TTT made 16 updates and restored the
+initial state; online TTT made 16 updates and retained changes only in the
+shared features. Each condition started from a fresh copy of its checkpoint.
+
+The published CSV integrity checks passed: 2,000 unique ordered evaluation
+IDs, all eight summary rows consistent with the 80 saved windows, and update
+counts of 0 for frozen and 2,000 for adaptive runs. CSV consistency does not
+by itself reproduce the published accuracy.
+
+### Final retest and delivery status
+
+**Experiment A.** The [executed notebook at f2aa445](https://github.com/dong-quan-tran/acm-online-learning-human-way/blob/f2aa445/notebooks/nguyen-expa.ipynb)
+reports 8,000 evaluation images per condition. Both original findings were
+reproduced. The corrected copy at `notebooks/nguyen-expa-evaluation-review.ipynb`
+checks that stream order is a permutation, rejects missing predictions, and
+keeps class labels out of the adaptation runner. The two adaptive conditions
+use the same seeded order in final evaluation. The original run and its
+outputs were preserved; the corrected copy has no saved execution outputs.
+
+```powershell
+python -m src.check_ttt_nguyen_notebook notebooks/nguyen-expa-evaluation-review.ipynb
+```
+
+Passed on two clean and two paired severity-5 images: one prediction per
+image, frozen model unchanged, episodic reset, online carry-forward, and
+independent rerun. Repeated, missing, out-of-range and non-integer indices
+were rejected. The adapter no longer has a class-label parameter. This check
+used random weights; it does not independently reproduce Nguyen's trained
+accuracy. Adopting the corrected copy upstream and replaying Nguyen's trained
+run are outside this completed local pilot; the original public code has
+not been changed.
+
+To reproduce A membership, use NumPy RandomState(0), generate the 50,000-row
+training permutation first and then the 10,000-row official test permutation.
+Sort the first 5,000 training rows for source development and the remaining
+rows for source training. Sort the first 2,000 test rows for TTT development
+and the remaining 8,000 for evaluation. The final adaptive traversal is
+RandomState(1).permutation(8000) over the sorted evaluation list. Use official
+Gaussian noise severity 5 with pixels divided by 255 and the notebook's
+model normalization. Smoke source IDs are test:0 and test:2.
+
+**Experiment B.** All four conditions passed the 16-image trained-checkpoint
+smoke test on both streams. The full independent CPU replay also completed:
+all eight conditions returned 2,000 predictions in the saved order, with
+zero updates in frozen runs and 2,000 in adaptive runs. Six accuracies
+matched the published results exactly. Clean online TTT was 61.95% locally
+vs. 62.10% published; noisy online TTT was 48.80% vs. 48.95%. Both gaps are
+-0.15 percentage points. The local run used CPU and the published run used
+MPS; the cause of the differences was not isolated. Exact online accuracy
+reproduction did not pass, but the evaluation behavior checks passed.
+
+Saved evidence: `results/ttt_exp_b_independent_replay.csv`. Use the membership
+and configuration at revision `339978d` for the 2,000-image replay; for each
+clean/noisy condition load a fresh checkpoint, use batch size 1 and no shuffle,
+and call the published `evaluate_condition` on CPU. Use the supervised
+checkpoint only for supervised frozen and the joint checkpoint for the other
+three conditions.
+
+**Submission:** This checklist and unresolved-issues record, the data and
+evaluation scripts in `src/`, the corrected notebook, the two saved pilot
+manifests, and the trained Experiment B replay CSV. No teammate files are
+needed to submit the smoke-check assignment.

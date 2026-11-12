@@ -1,0 +1,9 @@
+condition,corruption,reported,reproduced,difference,updates,images
+supervised_frozen,clean,0.634,0.634,0.0000,0,2000
+joint_frozen,clean,0.6585,0.6585,0.0000,0,2000
+standard_ttt,clean,0.6515,0.6515,0.0000,2000,2000
+online_ttt,clean,0.621,0.6195,-0.0015,2000,2000
+supervised_frozen,gaussian_noise,0.3905,0.3905,0.0000,0,2000
+joint_frozen,gaussian_noise,0.3505,0.3505,0.0000,0,2000
+standard_ttt,gaussian_noise,0.356,0.356,0.0000,2000,2000
+online_ttt,gaussian_noise,0.4895,0.488,-0.0015,2000,2000
