@@ -35,12 +35,12 @@ Do not rename corruption variants to make an overlap check pass.
 
 | Check | A: CIFAR-10 / CIFAR-10-C | B: CIFAR-100 classes 0-19 |
 | --- | --- | --- |
-| Source-ID overlap / saved order | Real data pilot passed; final split pending | Real data pilot passed; final split pending |
-| Corrupted input preparation | Official Gaussian noise severity 1 pilot passed; final settings pending | Real repeatable noise pilot passed; final strength pending |
-| Label-free callback and one prediction per image | Fixture passed; actual adapter pending | Fixture passed; actual adapter pending |
-| Frozen invariance; standard reset; online carry | Fixture passed; actual checkpoint pending | Fixture passed; actual checkpoint pending |
-| Independent model and optimizer state | Fixture passed; actual checkpoint pending | Fixture passed; actual checkpoint pending |
-| Real end-to-end pilot | Pending | Pending |
+| Source-ID overlap / saved order | Pass: notebook's 2,000 development / 8,000 evaluation rows are disjoint | Pass: published 9,000 train / 1,000 development / 2,000 test rows checked |
+| Corrupted input preparation | Pass: official Gaussian noise severity 5 aligned to clean labels | Pass: published clean/noisy order and repeatable noise at sigma 0.08 |
+| Label-free callback and one prediction per image | **Needs fixes:** class labels accepted for progress logging; duplicate order can skip a prediction | Pass on inspected adapter and valid real-image stream |
+| Frozen invariance; standard reset; online carry | Pass with randomly initialized model | Pass with randomly initialized model |
+| Independent model and optimizer state | Base model unchanged on rerun; new optimizer per call by inspection | Pass: fresh model in smoke test, stateless optimizer test |
+| Real end-to-end pilot | Code ran on two clean and two paired corrupted images; joint checkpoint pending | All four conditions ran on 128 clean and 128 paired noisy images; trained checkpoints pending |
 
 Run the fixture checks from the repository root:
 
@@ -50,10 +50,11 @@ python -m pytest tests/test_ttt_evaluation.py -q
 
 ## Needed for the real pilots
 
-- Nguyen: agreed development/evaluation source IDs, official corruption file
-  and severity, preprocessing, joint checkpoint, adapter, and reset mode.
-- Tuong: agreed twenty-class development/evaluation IDs, Gaussian noise
-  strength and seed, preprocessing, joint checkpoint and adapter.
+- Nguyen: revised notebook with the two fixes below, the trained
+  `joint_best.pt`, and its saved config/splits. Share `supervised_best.pt`
+  if the supervised frozen baseline should also be checked.
+- Tuong: `exp_b_joint_seed42.pt` and `exp_b_supervised_seed42.pt` referenced
+  in the report. The published split, settings and adapter are already available.
 - Both: confirm which parameters are allowed to update, optimizer initialization,
   adaptation steps, and prediction timing. Review adapters for label access and
   verify heads stay frozen before accepting pilot results.
@@ -109,3 +110,54 @@ python -m src.check_ttt_cifar10c_data
 The checker compares the complete clean and corrupted label order and checks
 ten pairs, one per class, without running a model. It writes a pilot manifest
 only if the checks pass. Severity 1 is temporary, not the team's final choice.
+
+## Independent checks of the leads' published code
+
+Experiment A: [Nguyen's Kaggle notebook](https://www.kaggle.com/code/vunguyenledinh/notebook9e2b34c05b),
+version 1. Save its JSON export locally at `data/raw/nguyen-ttt-review.ipynb`.
+The checker pins the reviewed source hash and loads only the definitions it
+needs; it does not execute the notebook's download or training cells.
+
+```powershell
+python -m src.check_ttt_nguyen_notebook data/raw/nguyen-ttt-review.ipynb
+```
+
+Verified on rows 0 and 2 from the notebook's seeded evaluation split.
+Frozen inference left the base state unchanged. On clean and severity-5
+images, episodic started both images from the same shared weights; online
+entered the second image with the first image's updates. Independent reruns
+started from the same weights and returned the same predictions. The
+checkpoint can be supplied with `--checkpoint <joint_best.pt>`; this local
+run used random initialization.
+
+Before full runs:
+
+1. Validate that `order` is a permutation of all evaluation indices.
+   The reviewed code accepted `[0, 0]` for two images, leaving the second
+   prediction at `-1`.
+2. Move running classification accuracy outside `run_ttt`. Its optional
+   `y` parameter is used for logging, not gradients, but class labels should
+   stay in scoring. Use the same seeded traversal for matched conditions,
+   or document any intentional difference.
+
+Experiment B: [Tuong's published revision](https://github.com/dong-quan-tran/acm-online-learning-human-way/tree/317aea7).
+Checked the published split files and configuration, including official test
+membership for classes 0-19. On real rows `test:6` and `test:7`, each of the
+four conditions recorded exactly one prediction per row in order on both
+streams. Frozen and standard runs ended at the starting state; online ended
+with updated weights. Update counts were 0 for frozen and 2 for adaptive runs.
+The published `tests/test_ttt_exp_b.py` suite also passed locally (39 tests),
+including the between-image reset and stateless optimizer checks. The
+published 128-image smoke test passed on CPU for each clean/noisy condition
+(0 updates for frozen, 128 for adaptive).
+
+To reproduce B, use revision `317aea7` in a separate checkout, make the
+cached CIFAR-100 data available under its `data/raw`, then run:
+
+```powershell
+python -m pytest tests/test_ttt_exp_b.py -q
+python -m src.ttt_cifar100 --smoke-test --device cpu --output results/khoi-smoke
+```
+
+Neither smoke run verifies trained-model accuracy. Do not use the smoke
+accuracy values as findings or rerun source training just for this audit.
