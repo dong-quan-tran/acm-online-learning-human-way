@@ -32,7 +32,9 @@ def main():
     ]
 
     baseline = df[df["condition"] == "joint_frozen"].copy()
-    adaptive = df[df["condition"] != "joint_frozen"].copy()
+    adaptive = df[
+      df["condition"].isin(["standard_ttt", "online_ttt"])
+    ].copy()
 
     if baseline.duplicated(match_cols).any():
         raise ValueError("Duplicate frozen baseline matches found.")
