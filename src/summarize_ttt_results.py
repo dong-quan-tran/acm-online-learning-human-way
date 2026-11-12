@@ -1,13 +1,19 @@
 
 from pathlib import Path
+import sys
 import pandas as pd
 
-RESULTS_FILE = Path("results/ttt_exp_b_seed42.csv")
+# Default to real Experiment B results.
+RESULTS_FILE = Path(
+    sys.argv[1] if len(sys.argv) > 1
+    else "results/ttt_exp_b_seed42.csv"
+)
+
+OUTPUT_FILE = Path("results/ttt_multiseed_summary.csv")
 
 def main():
     if not RESULTS_FILE.exists():
-        print("No TTT results yet. Waiting for experiment runs.")
-        return
+        raise FileNotFoundError(f"Missing file: {RESULTS_FILE}")
 
     df = pd.read_csv(RESULTS_FILE)
 
@@ -21,11 +27,11 @@ def main():
     if missing:
         raise ValueError(f"Missing columns: {missing}")
 
-    # Use explicit labels for clean data and missing severity.
     df["corruption"] = df["corruption"].fillna("clean")
     df["severity"] = df["severity"].fillna("none").astype(str)
 
-    # Match runs on their experimental settings.
+    # Each adaptive run must match a frozen run from
+    # the same experiment, seed, and checkpoint.
     match_cols = [
         "experiment", "seed", "checkpoint", "dataset",
         "split", "corruption", "severity"
@@ -33,46 +39,63 @@ def main():
 
     baseline = df[df["condition"] == "joint_frozen"].copy()
     adaptive = df[
-      df["condition"].isin(["standard_ttt", "online_ttt"])
+        df["condition"].isin(["standard_ttt", "online_ttt"])
     ].copy()
 
     if baseline.duplicated(match_cols).any():
-        raise ValueError("Duplicate frozen baseline matches found.")
+        raise ValueError("Duplicate frozen baseline found.")
 
-    baseline = baseline[match_cols + ["accuracy"]].rename(
-        columns={"accuracy": "baseline_accuracy"}
-    )
+    if adaptive.duplicated(match_cols + ["condition"]).any():
+        raise ValueError("Duplicate adaptive run found.")
+
+    baseline = baseline[
+        match_cols + ["accuracy"]
+    ].rename(columns={"accuracy": "baseline_accuracy"})
 
     compared = adaptive.merge(
-        baseline, on=match_cols, how="left", validate="many_to_one"
+        baseline,
+        on=match_cols,
+        how="left",
+        validate="many_to_one"
     )
 
     if compared["baseline_accuracy"].isna().any():
-        raise ValueError(
-            "Some adaptive runs have no matched frozen baseline."
-        )
+        raise ValueError("Adaptive run missing matched baseline.")
 
     compared["accuracy_change_pp"] = (
         compared["accuracy"] - compared["baseline_accuracy"]
     ) * 100
 
-    # Summarize experiments separately.
-    for experiment, group in compared.groupby("experiment"):
-        print(f"\n=== Experiment {experiment} ===")
+    group_cols = [
+        "experiment", "dataset", "split",
+        "condition", "corruption", "severity"
+    ]
 
-        summary = group.groupby(
-            ["condition", "corruption", "severity"]
-        ).agg(
-            runs=("accuracy", "count"),
-            mean_accuracy=("accuracy", "mean"),
-            std_accuracy=("accuracy", "std"),
-            mean_change_pp=("accuracy_change_pp", "mean"),
-            std_change_pp=("accuracy_change_pp", "std"),
-            mean_runtime_seconds=("runtime_seconds", "mean"),
-            mean_updates=("update_count", "mean"),
+    summary = compared.groupby(group_cols).agg(
+        seeds=("seed", "nunique"),
+        mean_accuracy=("accuracy", "mean"),
+        std_accuracy=("accuracy", "std"),
+        mean_change_pp=("accuracy_change_pp", "mean"),
+        std_change_pp=("accuracy_change_pp", "std"),
+        mean_runtime_seconds=("runtime_seconds", "mean"),
+        mean_updates=("update_count", "mean")
+    ).reset_index()
+
+    summary = summary.sort_values(group_cols)
+
+    OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    summary.to_csv(OUTPUT_FILE, index=False)
+
+    print("\n=== TTT Multi-Seed Summary ===")
+    print(summary.to_string(index=False))
+
+    print(f"\nSaved: {OUTPUT_FILE}")
+
+    if (summary["seeds"] < 3).any():
+        print(
+            "\nNote: Some groups have fewer than 3 seeds. "
+            "Results are preliminary."
         )
-
-        print(summary.to_string())
 
 if __name__ == "__main__":
     main()
