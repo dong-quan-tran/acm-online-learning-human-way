@@ -1,0 +1,9 @@
+experiment,dataset,split,condition,corruption,severity,seeds,mean_accuracy,std_accuracy,mean_change_pp,std_change_pp,mean_runtime_seconds,mean_updates
+A,CIFAR-10,evaluation,online_ttt,clean,none,1,0.905375,,-1.4249999999999985,,103.0,8000.0
+A,CIFAR-10,evaluation,online_ttt,gaussian_noise,5,1,0.7405,,33.900000000000006,,103.0,8000.0
+A,CIFAR-10,evaluation,standard_ttt,clean,none,1,0.905,,-1.4625,,945.0,80000.0
+A,CIFAR-10,evaluation,standard_ttt,gaussian_noise,5,1,0.507125,,10.562500000000002,,944.0,80000.0
+B,CIFAR-100-20,test,online_ttt,clean,none,1,0.621,,-3.749999999999998,,38.6680741669843,2000.0
+B,CIFAR-100-20,test,online_ttt,gaussian_noise,3,1,0.4895,,13.900000000000002,,38.27186216693372,2000.0
+B,CIFAR-100-20,test,standard_ttt,clean,none,1,0.6515,,-0.7000000000000006,,34.07513375009876,2000.0
+B,CIFAR-100-20,test,standard_ttt,gaussian_noise,3,1,0.356,,0.5500000000000005,,38.80664620909374,2000.0
