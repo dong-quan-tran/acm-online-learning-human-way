@@ -79,7 +79,8 @@ cd /Users/jasonpham/PycharmProjects/acm-online-learning-human-way
 .venv/bin/python -m src.ttt_cifar100 --pilot --train-only --device auto
 
 # 5. Full Stream Evaluation (2,000 test samples, 4 conditions x 2 streams, seed 42)
-.venv/bin/python -m src.ttt_cifar100 --pilot --device auto
+# Use --output <dir> for a fresh directory or --overwrite to replace existing CSVs
+.venv/bin/python -m src.ttt_cifar100 --pilot --device auto --output results/exp_b_pilot
 
 # 6. Stream Accuracy Plot Generation
 .venv/bin/python results/generate_plot.py
@@ -125,12 +126,12 @@ Adaptation occurs on individual test samples ($B=1$, expanded to 4 rotations). E
 
 | Condition | Adaptation Steps / Image | Parameters Updated | Total Test Updates | Total Runtime (s) | Runtime / Image (ms) | Peak Memory Footprint |
 |---|:---:|---|:---:|:---:|:---:|:---:|
-| `supervised_frozen` | 0 | None (Frozen) | 0 | 8.71 s (Clean) / 7.20 s (Noise) | ~4.0 ms | Minimal (Inference only) |
-| `joint_frozen` | 0 | None (Frozen) | 0 | 5.93 s (Clean) / 6.92 s (Noise) | ~3.2 ms | Minimal (Inference only) |
-| `standard_ttt` | 1 | `model.features` only (Reset per image) | 2,000 | 41.15 s (Clean) / 40.72 s (Noise) | ~20.4 ms | +1 feature state snapshot |
-| `online_ttt` | 1 | `model.features` only (Continuous state) | 2,000 | 39.01 s (Clean) / 39.98 s (Noise) | ~19.8 ms | 0 snapshot overhead |
+| `supervised_frozen` | 0 | None (Frozen) | 0 | 11.67 s (Clean) / 7.09 s (Noise) | ~4.7 ms | Minimal (Inference only) |
+| `joint_frozen` | 0 | None (Frozen) | 0 | 7.09 s (Clean) / 6.67 s (Noise) | ~3.4 ms | Minimal (Inference only) |
+| `standard_ttt` | 1 | `model.features` only (Reset per image) | 2,000 | 34.08 s (Clean) / 38.81 s (Noise) | ~18.2 ms | +1 feature state snapshot |
+| `online_ttt` | 1 | `model.features` only (Continuous state) | 2,000 | 38.67 s (Clean) / 38.27 s (Noise) | ~19.2 ms | 0 snapshot overhead |
 
-*Test adaptation adds ~16–17 ms per image compared to frozen inference, representing an extremely lightweight overhead that runs at ~50 frames per second on local MPS hardware.*
+*Test adaptation adds ~14–16 ms per image compared to frozen inference, representing an extremely lightweight overhead that runs at ~52–55 frames per second on local MPS hardware.*
 
 ---
 
@@ -140,14 +141,14 @@ Evaluated on $2,000$ test images of CIFAR-100 classes 0–19. Seed 42:
 
 | Stream | Condition | Test Accuracy | $\Delta$ vs. `joint_frozen` | $\Delta$ vs. `standard_ttt` | Mean Rotation Loss | Update Count | Stream Runtime (s) |
 |---|---|:---:|:---:|:---:|:---:|:---:|:---:|
-| **Clean** | `supervised_frozen` | **63.40%** | -2.45 pp | — | 1.4792 | 0 | 8.71 s |
-| **Clean** | `joint_frozen` | **65.85%** | Baseline | — | 0.9561 | 0 | 5.93 s |
-| **Clean** | `standard_ttt` | **65.15%** | **-0.70 pp** | Baseline | 0.8131 | 2,000 | 41.15 s |
-| **Clean** | `online_ttt` | **62.10%** | **-3.75 pp** | **-3.05 pp** | 0.8553 | 2,000 | 39.01 s |
-| **Gaussian Noise** ($\sigma=0.08$) | `supervised_frozen` | **39.05%** | +4.00 pp | — | 1.4642 | 0 | 7.20 s |
-| **Gaussian Noise** ($\sigma=0.08$) | `joint_frozen` | **35.05%** | Baseline | — | 1.0906 | 0 | 6.92 s |
-| **Gaussian Noise** ($\sigma=0.08$) | `standard_ttt` | **35.60%** | **+0.55 pp** | Baseline | 0.9401 | 2,000 | 40.72 s |
-| **Gaussian Noise** ($\sigma=0.08$) | `online_ttt` | **48.95%** | **+13.90 pp** | **+13.35 pp** | 0.9340 | 2,000 | 39.98 s |
+| **Clean** | `supervised_frozen` | **63.40%** | -2.45 pp | — | 1.4792 | 0 | 11.67 s |
+| **Clean** | `joint_frozen` | **65.85%** | Baseline | — | 0.9561 | 0 | 7.09 s |
+| **Clean** | `standard_ttt` | **65.15%** | **-0.70 pp** | Baseline | 0.8131 | 2,000 | 34.08 s |
+| **Clean** | `online_ttt` | **62.10%** | **-3.75 pp** | **-3.05 pp** | 0.8553 | 2,000 | 38.67 s |
+| **Gaussian Noise** ($\sigma=0.08$) | `supervised_frozen` | **39.05%** | +4.00 pp | — | 1.4642 | 0 | 7.09 s |
+| **Gaussian Noise** ($\sigma=0.08$) | `joint_frozen` | **35.05%** | Baseline | — | 1.0906 | 0 | 6.67 s |
+| **Gaussian Noise** ($\sigma=0.08$) | `standard_ttt` | **35.60%** | **+0.55 pp** | Baseline | 0.9401 | 2,000 | 38.81 s |
+| **Gaussian Noise** ($\sigma=0.08$) | `online_ttt` | **48.95%** | **+13.90 pp** | **+13.35 pp** | 0.9340 | 2,000 | 38.27 s |
 
 ---
 

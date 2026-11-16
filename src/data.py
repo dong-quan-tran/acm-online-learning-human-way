@@ -287,6 +287,30 @@ def build_exp_b_test_membership(
     return membership
 
 
+def _validate_shared_c20_membership(
+    membership: Union[dict, str, Path],
+) -> Dict[str, Any]:
+    """Load and validate the 9,000 train / 1,000 validation CIFAR-100-20 membership."""
+    if isinstance(membership, (str, Path)):
+        with open(membership, encoding="utf-8") as handle:
+            membership = json.load(handle)
+    if not isinstance(membership, dict) or membership.get("source_split") != "train":
+        raise ValueError("membership must declare source_split='train'")
+    for name, size in (("train", 9000), ("validation", 1000)):
+        rows = membership.get(name)
+        if not isinstance(rows, list) or len(rows) != size:
+            raise ValueError(f"{name} membership must contain {size} row IDs")
+        if any(type(row) is not int or row < 0 for row in rows):
+            raise ValueError(f"{name} row IDs must be nonnegative integers")
+        if len(set(rows)) != size:
+            raise ValueError(f"{name} membership contains duplicate row IDs")
+    train_rows = set(membership["train"])
+    validation_rows = set(membership["validation"])
+    if train_rows & validation_rows:
+        raise ValueError("train and validation membership overlap")
+    return membership
+
+
 class CIFAR100ExpBDataset(Dataset):
     """Dataset for Experiment B (CIFAR-100 classes 0-19).
 
@@ -331,26 +355,14 @@ class CIFAR100ExpBDataset(Dataset):
             self.source_split = "train"
             if membership is None:
                 membership = SHARED_C20_MEMBERSHIP_PATH
-            if isinstance(membership, (str, Path)):
-                with open(membership, encoding="utf-8") as handle:
-                    membership = json.load(handle)
-            if not isinstance(membership, dict) or membership.get("source_split") != "train":
-                raise ValueError("membership must declare source_split='train'")
-            for name, size in (("train", 9000), ("validation", 1000)):
-                rows = membership.get(name)
-                if not isinstance(rows, list) or len(rows) != size:
-                    raise ValueError(f"{name} membership must contain {size} row IDs")
-                if any(type(row) is not int or row < 0 for row in rows):
-                    raise ValueError(f"{name} row IDs must be nonnegative integers")
-                if len(set(rows)) != size:
-                    raise ValueError(f"{name} membership contains duplicate row IDs")
-            train_rows = set(membership["train"])
-            validation_rows = set(membership["validation"])
-            if train_rows & validation_rows:
-                raise ValueError("train and validation membership overlap")
+            membership = _validate_shared_c20_membership(membership)
 
-            self.dataset = dataset or load_dataset(
-                "uoft-cs/cifar100", split=self.source_split, cache_dir=str(DATA_PATH)
+            self.dataset = (
+                dataset
+                if dataset is not None
+                else load_dataset(
+                    "uoft-cs/cifar100", split=self.source_split, cache_dir=str(DATA_PATH)
+                )
             )
             self.indices = list(membership[split])
             if split == "train" and seed is not None:
@@ -359,8 +371,12 @@ class CIFAR100ExpBDataset(Dataset):
                 self.indices = [self.indices[i] for i in order]
         else:
             self.source_split = "test"
-            self.dataset = dataset or load_dataset(
-                "uoft-cs/cifar100", split=self.source_split, cache_dir=str(DATA_PATH)
+            self.dataset = (
+                dataset
+                if dataset is not None
+                else load_dataset(
+                    "uoft-cs/cifar100", split=self.source_split, cache_dir=str(DATA_PATH)
+                )
             )
             if test_membership is None:
                 test_membership = EXP_B_TEST_MEMBERSHIP_PATH
@@ -526,3 +542,437 @@ def get_exp_b_loader(
         num_workers=num_workers,
         drop_last=False,
     )
+
+
+# ==============================================================================
+# Periodic Held-Out Split Helpers (Adaptation Stream vs. Fixed Held-Out Set)
+# ==============================================================================
+
+_ADAPTATION_SPLIT_KEYS: Tuple[str, ...] = (
+    "adaptation_ids",
+    "adaptation",
+    "adaptation_rows",
+    "adapt_ids",
+    "adapt",
+    "stream_ids",
+    "stream",
+)
+_HELD_OUT_SPLIT_KEYS: Tuple[str, ...] = (
+    "held_out_ids",
+    "held_out",
+    "held_out_rows",
+    "evaluation_ids",
+    "evaluation",
+    "eval_ids",
+    "eval",
+    "test_ids",
+    "test",
+)
+_SINGLE_SPLIT_FALLBACK_KEYS: Tuple[str, ...] = ("indices", "rows", "ids")
+
+
+def parse_source_id(
+    entry: Union[int, str],
+    default_source_split: str = "test",
+) -> Tuple[str, int]:
+    """Parse an integer row or '<split>:<row>' identifier into (split, row)."""
+    if default_source_split not in {"train", "test"}:
+        raise ValueError(
+            f"default_source_split must be 'train' or 'test', got {default_source_split!r}"
+        )
+    if isinstance(entry, int) and not isinstance(entry, bool):
+        if entry < 0:
+            raise ValueError(f"Row ID must be non-negative, got {entry}")
+        return (default_source_split, entry)
+    if isinstance(entry, str) and ":" in entry:
+        src_split, row_str = entry.split(":", 1)
+        if src_split not in {"train", "test"} or not row_str.isdigit():
+            raise ValueError(f"Malformed source ID string: {entry!r}")
+        return (src_split, int(row_str))
+    raise ValueError(
+        f"Expected non-negative int or '<train|test>:<row>' string, got {entry!r}"
+    )
+
+
+def _read_json_mapping_or_list(source: Union[str, Path, Dict[str, Any], List[Any]]) -> Any:
+    if isinstance(source, (str, Path)):
+        with open(source, "r", encoding="utf-8") as handle:
+            return json.load(handle)
+    return source
+
+
+def load_exp_b_split_ids(
+    split_source: Union[str, Path, Dict[str, Any], List[Any]],
+    *,
+    key: Optional[str] = None,
+    split_role: Optional[str] = None,
+    allow_fallback_keys: bool = True,
+    default_source_split: str = "test",
+) -> Tuple[List[Tuple[str, int]], Dict[str, Any]]:
+    """Load an ordered list of canonical (source_split, row_id) references.
+
+    Supports bare lists, single-role split JSONs, or combined split manifests.
+    Preserves the saved element order and rejects empty or duplicate IDs.
+    """
+    if default_source_split not in {"train", "test"}:
+        raise ValueError(
+            f"default_source_split must be 'train' or 'test', got {default_source_split!r}"
+        )
+    raw = _read_json_mapping_or_list(split_source)
+    metadata: Dict[str, Any] = {}
+
+    if isinstance(raw, list):
+        entries = raw
+        resolved_default = default_source_split
+        resolved_key = "<list>"
+    elif isinstance(raw, dict):
+        role_split_key = f"{split_role}_source_split" if split_role else None
+        if role_split_key and role_split_key in raw and raw[role_split_key] is not None:
+            explicit_split = raw[role_split_key]
+        elif "source_split" in raw and raw["source_split"] is not None:
+            explicit_split = raw["source_split"]
+        else:
+            explicit_split = default_source_split
+        if not isinstance(explicit_split, str) or explicit_split not in {"train", "test"}:
+            raise ValueError(
+                f"Unsupported source_split {explicit_split!r}; expected 'train' or 'test'"
+            )
+        resolved_default = explicit_split
+
+        if key is not None:
+            if key not in raw:
+                raise KeyError(f"Requested split key {key!r} not found in split file")
+            resolved_key = key
+            entries = raw[key]
+        else:
+            if split_role == "adaptation":
+                candidates = _ADAPTATION_SPLIT_KEYS
+            elif split_role == "held_out":
+                candidates = _HELD_OUT_SPLIT_KEYS
+            else:
+                candidates = _ADAPTATION_SPLIT_KEYS + _HELD_OUT_SPLIT_KEYS
+            if allow_fallback_keys:
+                candidates = candidates + _SINGLE_SPLIT_FALLBACK_KEYS
+
+            resolved_key = next((k for k in candidates if k in raw), None)
+            if resolved_key is None:
+                raise KeyError(
+                    f"Could not locate {split_role or 'split'} IDs in split mapping; "
+                    f"available keys: {sorted(raw.keys())}"
+                )
+            entries = raw[resolved_key]
+
+        metadata = {
+            k: v
+            for k, v in raw.items()
+            if not isinstance(v, list)
+        }
+    else:
+        raise TypeError(f"Expected JSON object or list, got {type(raw).__name__}")
+
+    if not isinstance(entries, list) or len(entries) == 0:
+        raise ValueError(
+            f"Split {split_role or resolved_key!r} must be a non-empty list of IDs"
+        )
+
+    refs = [parse_source_id(item, default_source_split=resolved_default) for item in entries]
+    if len(set(refs)) != len(refs):
+        raise ValueError(
+            f"Split {split_role or resolved_key!r} contains duplicate source IDs"
+        )
+    metadata["resolved_key"] = resolved_key
+    return refs, metadata
+
+
+def load_exp_b_split_pair(
+    split_file: Union[str, Path, Dict[str, Any]],
+    held_out_file: Optional[Union[str, Path, Dict[str, Any]]] = None,
+    *,
+    adaptation_key: Optional[str] = None,
+    held_out_key: Optional[str] = None,
+    train_val_membership: Optional[Union[str, Path, Dict[str, Any]]] = SHARED_C20_MEMBERSHIP_PATH,
+    prior_test_membership: Optional[Union[str, Path, Dict[str, Any]]] = EXP_B_TEST_MEMBERSHIP_PATH,
+) -> Tuple[List[Tuple[str, int]], List[Tuple[str, int]], Dict[str, Any]]:
+    """Load disjoint adaptation and held-out splits with full overlap checks.
+
+    Verifies:
+    - Neither adaptation nor held-out is empty or has internal duplicates.
+    - Adaptation and held-out are strictly disjoint.
+    - Neither overlaps source training or development/validation splits.
+    - Records whether the held-out images overlap prior Experiment B test runs
+      (data/exp_b_test_membership.json) so reports do not mislabel them as unseen.
+    """
+    separate_files = held_out_file is not None
+    adapt_refs, adapt_meta = load_exp_b_split_ids(
+        split_file,
+        key=adaptation_key,
+        split_role="adaptation",
+        allow_fallback_keys=separate_files,
+    )
+    held_out_refs, held_out_meta = load_exp_b_split_ids(
+        held_out_file if separate_files else split_file,
+        key=held_out_key,
+        split_role="held_out",
+        allow_fallback_keys=separate_files,
+    )
+
+    adapt_set = set(adapt_refs)
+    held_out_set = set(held_out_refs)
+    overlap_adapt_held = adapt_set & held_out_set
+    if overlap_adapt_held:
+        sample = sorted(overlap_adapt_held)[:5]
+        raise ValueError(
+            f"Adaptation and held-out splits overlap ({len(overlap_adapt_held)} shared IDs, "
+            f"first: {sample})"
+        )
+
+    if train_val_membership is not None:
+        tv_raw = _read_json_mapping_or_list(train_val_membership)
+        if not isinstance(tv_raw, dict):
+            raise TypeError(
+                f"train_val_membership must be a JSON object, got {type(tv_raw).__name__}"
+            )
+        tv_split = tv_raw.get("source_split", "train")
+        if not isinstance(tv_split, str) or tv_split not in {"train", "test"}:
+            raise ValueError(
+                f"Unsupported train_val_membership source_split {tv_split!r}; expected 'train' or 'test'"
+            )
+        if "train" not in tv_raw or "validation" not in tv_raw:
+            raise ValueError("train_val_membership must include 'train' and 'validation' lists")
+        train_entries = tv_raw["train"]
+        val_entries = tv_raw["validation"]
+        if not isinstance(train_entries, list) or not isinstance(val_entries, list):
+            raise ValueError("train_val_membership 'train' and 'validation' must be lists")
+        train_refs = {parse_source_id(r, default_source_split=tv_split) for r in train_entries}
+        val_refs = {parse_source_id(r, default_source_split=tv_split) for r in val_entries}
+        source_pool = train_refs | val_refs
+        if adapt_set & source_pool:
+            raise ValueError(
+                f"Adaptation split overlaps source train/validation split "
+                f"({len(adapt_set & source_pool)} shared IDs)"
+            )
+        if held_out_set & source_pool:
+            raise ValueError(
+                f"Held-out split overlaps source train/validation split "
+                f"({len(held_out_set & source_pool)} shared IDs)"
+            )
+
+    held_out_prior_overlap = 0
+    adapt_prior_overlap = 0
+    if prior_test_membership is not None:
+        pt_path = Path(prior_test_membership) if isinstance(prior_test_membership, (str, Path)) else None
+        if (
+            pt_path is not None
+            and not pt_path.exists()
+            and pt_path.resolve() != EXP_B_TEST_MEMBERSHIP_PATH.resolve()
+        ):
+            raise FileNotFoundError(f"prior_test_membership file not found: {pt_path}")
+        if pt_path is None or pt_path.exists():
+            pt_raw = _read_json_mapping_or_list(prior_test_membership)
+            if not isinstance(pt_raw, dict):
+                raise TypeError(
+                    f"prior_test_membership must be a JSON object, got {type(pt_raw).__name__}"
+                )
+            pt_split = pt_raw.get("source_split", "test")
+            if not isinstance(pt_split, str) or pt_split not in {"train", "test"}:
+                raise ValueError(
+                    f"Unsupported prior_test_membership source_split {pt_split!r}; expected 'train' or 'test'"
+                )
+            if "test" in pt_raw:
+                pt_entries = pt_raw["test"]
+            elif "held_out" in pt_raw:
+                pt_entries = pt_raw["held_out"]
+            else:
+                raise ValueError("prior_test_membership must include a 'test' or 'held_out' list")
+            if not isinstance(pt_entries, list):
+                raise ValueError("prior_test_membership entries must be a list")
+            prior_refs = {parse_source_id(r, default_source_split=pt_split) for r in pt_entries}
+            held_out_prior_overlap = len(held_out_set & prior_refs)
+            adapt_prior_overlap = len(adapt_set & prior_refs)
+
+    metadata: Dict[str, Any] = {
+        "adaptation_count": len(adapt_refs),
+        "held_out_count": len(held_out_refs),
+        "adaptation_key": adapt_meta.get("resolved_key"),
+        "held_out_key": held_out_meta.get("resolved_key"),
+        "adaptation_metadata": adapt_meta,
+        "held_out_metadata": held_out_meta,
+        "held_out_examined_in_prior_exp_b": held_out_prior_overlap > 0,
+        "held_out_prior_overlap_count": held_out_prior_overlap,
+        "adaptation_prior_overlap_count": adapt_prior_overlap,
+    }
+    return adapt_refs, held_out_refs, metadata
+
+
+class CIFAR100SplitSubsetDataset(Dataset):
+    """Ordered CIFAR-100 classes 0-19 dataset backed by explicit (split, row) IDs.
+
+    Preserves the exact sample order in ``sample_refs``, applies pixel-space [0, 1]
+    ``ToTensor()`` preprocessing, validates that all labels belong to classes 0..19,
+    and supports deterministic per-sample SHA-256 Gaussian noise so clean and noisy
+    views stay aligned by ``sample_id = f"{source_split}:{row}"``.
+    """
+
+    def __init__(
+        self,
+        sample_refs: List[Tuple[str, int]],
+        *,
+        corruption: str = "clean",
+        noise_sigma: float = 0.08,
+        noise_seed: int = 42,
+        datasets_by_split: Optional[Dict[str, Any]] = None,
+        allowed_classes: Tuple[int, ...] = tuple(range(20)),
+    ):
+        if corruption not in {"clean", "gaussian_noise"}:
+            raise ValueError("corruption must be 'clean' or 'gaussian_noise'")
+        if not sample_refs:
+            raise ValueError("sample_refs must be non-empty")
+        if len(set(sample_refs)) != len(sample_refs):
+            raise ValueError("sample_refs contains duplicate entries")
+
+        self.sample_refs = list(sample_refs)
+        self.corruption = corruption
+        self.noise_sigma = float(noise_sigma)
+        self.noise_seed = int(noise_seed)
+        self.allowed_classes = set(allowed_classes)
+
+        needed_splits = sorted({src_split for src_split, _ in self.sample_refs})
+        self.datasets_by_split: Dict[str, Any] = {}
+        for src_split in needed_splits:
+            if src_split not in {"train", "test"}:
+                raise ValueError(f"Unsupported CIFAR-100 source split {src_split!r}")
+            if datasets_by_split is not None and datasets_by_split.get(src_split) is not None:
+                ds = datasets_by_split[src_split]
+            else:
+                ds = load_dataset(
+                    "uoft-cs/cifar100", split=src_split, cache_dir=str(DATA_PATH)
+                )
+            self.datasets_by_split[src_split] = ds
+
+        # Validate index bounds and class membership (0..19) upfront
+        labels_cache: Dict[str, Any] = {}
+        for src_split, ds in self.datasets_by_split.items():
+            try:
+                labels_cache[src_split] = ds["fine_label"]
+            except (KeyError, TypeError, IndexError, ValueError):
+                labels_cache[src_split] = None
+
+        for src_split, row in self.sample_refs:
+            ds = self.datasets_by_split[src_split]
+            if row < 0 or row >= len(ds):
+                raise IndexError(
+                    f"Row {row} out of range for split '{src_split}' (len={len(ds)})"
+                )
+            cached_labels = labels_cache[src_split]
+            lbl = int(cached_labels[row]) if cached_labels is not None else int(ds[row]["fine_label"])
+            if lbl not in self.allowed_classes:
+                raise ValueError(
+                    f"Sample '{src_split}:{row}' has fine_label={lbl} outside allowed classes"
+                )
+
+        self.transform = transforms.ToTensor()
+
+    def __len__(self) -> int:
+        return len(self.sample_refs)
+
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, int, str]:
+        src_split, row = self.sample_refs[index]
+        item = self.datasets_by_split[src_split][row]
+        image = self.transform(item["img"])
+        label = int(item["fine_label"])
+        sample_id = f"{src_split}:{row}"
+
+        if self.corruption == "gaussian_noise":
+            image = apply_gaussian_noise(
+                image, sample_id, sigma=self.noise_sigma, noise_seed=self.noise_seed
+            )
+
+        return image, label, sample_id
+
+
+def get_exp_b_split_loaders(
+    split_file: Union[str, Path, Dict[str, Any]],
+    held_out_file: Optional[Union[str, Path, Dict[str, Any]]] = None,
+    *,
+    adaptation_key: Optional[str] = None,
+    held_out_key: Optional[str] = None,
+    stream_corruption: str = "clean",
+    noise_sigma: float = 0.08,
+    noise_seed: int = 42,
+    eval_batch_size: int = 64,
+    num_workers: int = 0,
+    max_adapt_images: Optional[int] = None,
+    datasets_by_split: Optional[Dict[str, Any]] = None,
+    train_val_membership: Optional[Union[str, Path, Dict[str, Any]]] = SHARED_C20_MEMBERSHIP_PATH,
+    prior_test_membership: Optional[Union[str, Path, Dict[str, Any]]] = EXP_B_TEST_MEMBERSHIP_PATH,
+) -> Tuple[DataLoader, DataLoader, DataLoader, Dict[str, Any]]:
+    """Build adaptation, clean held-out, and noisy held-out DataLoaders from split files.
+
+    Returns ``(adaptation_loader, held_out_clean_loader, held_out_noisy_loader, metadata)``.
+    Adaptation always keeps ``batch_size=1`` and ``shuffle=False`` in saved stream order.
+    """
+    if max_adapt_images is not None and max_adapt_images <= 0:
+        raise ValueError(f"max_adapt_images must be positive, got {max_adapt_images}")
+
+    adapt_refs, held_out_refs, metadata = load_exp_b_split_pair(
+        split_file,
+        held_out_file,
+        adaptation_key=adaptation_key,
+        held_out_key=held_out_key,
+        train_val_membership=train_val_membership,
+        prior_test_membership=prior_test_membership,
+    )
+    if max_adapt_images is not None:
+        adapt_refs = adapt_refs[:max_adapt_images]
+        metadata["adaptation_count_effective"] = len(adapt_refs)
+    else:
+        metadata["adaptation_count_effective"] = len(adapt_refs)
+
+    adapt_ds = CIFAR100SplitSubsetDataset(
+        adapt_refs,
+        corruption=stream_corruption,
+        noise_sigma=noise_sigma,
+        noise_seed=noise_seed,
+        datasets_by_split=datasets_by_split,
+    )
+    # Reuse already-loaded HuggingFace datasets for held-out splits when splits match
+    shared_cache = dict(datasets_by_split) if datasets_by_split is not None else {}
+    shared_cache.update(adapt_ds.datasets_by_split)
+    held_out_clean_ds = CIFAR100SplitSubsetDataset(
+        held_out_refs,
+        corruption="clean",
+        noise_sigma=noise_sigma,
+        noise_seed=noise_seed,
+        datasets_by_split=shared_cache if shared_cache else None,
+    )
+    shared_cache.update(held_out_clean_ds.datasets_by_split)
+    held_out_noisy_ds = CIFAR100SplitSubsetDataset(
+        held_out_refs,
+        corruption="gaussian_noise",
+        noise_sigma=noise_sigma,
+        noise_seed=noise_seed,
+        datasets_by_split=shared_cache,
+    )
+
+    adapt_loader = DataLoader(
+        adapt_ds,
+        batch_size=1,
+        shuffle=False,
+        num_workers=num_workers,
+        drop_last=False,
+    )
+    held_out_clean_loader = DataLoader(
+        held_out_clean_ds,
+        batch_size=eval_batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        drop_last=False,
+    )
+    held_out_noisy_loader = DataLoader(
+        held_out_noisy_ds,
+        batch_size=eval_batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        drop_last=False,
+    )
+    return adapt_loader, held_out_clean_loader, held_out_noisy_loader, metadata

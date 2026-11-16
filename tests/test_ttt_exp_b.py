@@ -10,10 +10,9 @@ Strictly validates:
           standard_ttt episodic reset, online_ttt carryover & divergence, frozen model invariance,
           repeatable noise cross-condition consistency, stateless SGD via spy)
 - Tier 4: Real-World Scenarios (Khoi Checks #6, #8: genuine stream evaluation simulation,
-          Alka CSV logging schemas, windowed accuracy conservation laws, single recorded prediction audit, delta accuracy)
+          Alka CSV logging schemas, windowed accuracy conservation laws, single prediction audit, delta accuracy)
 """
 
-import copy
 import inspect
 import json
 import math
@@ -1160,3 +1159,898 @@ class TestTier4RealWorldScenarios:
         # Handles equal accuracies properly
         delta_zero = compute_delta_accuracy(acc_joint, acc_joint)
         assert delta_zero == pytest.approx(0.0)
+
+
+# ==============================================================================
+# CLASS 7: Tier 5 Source Training, LR Tuning, Smoke Test, CLI & Regression Fixes
+# ==============================================================================
+
+
+class TestTier5RunnerPipelineAndFixes:
+    """Verifies train_source_model, tune_validation_lr, run_smoke_test, CLI, and bug fixes."""
+
+    @pytest.mark.skipif(
+        not HAS_DATA_EXP_B,
+        reason="CIFAR100ExpBDataset not available",
+    )
+    def test_empty_dataset_argument_not_overridden_by_falsy_or(self, monkeypatch):
+        from src import data as data_mod
+
+        called = False
+
+        def fail_if_called(*args, **kwargs):
+            nonlocal called
+            called = True
+            raise AssertionError("load_dataset must not be called when dataset is passed")
+
+        monkeypatch.setattr(data_mod, "load_dataset", fail_if_called)
+
+        ds_train = CIFAR100ExpBDataset(split="train", dataset=[])
+        assert not called
+        assert ds_train.dataset == []
+        with pytest.raises(IndexError):
+            _ = ds_train[0]
+
+        ds_test = CIFAR100ExpBDataset(split="test", dataset=[])
+        assert not called
+        assert ds_test.dataset == []
+        with pytest.raises(IndexError):
+            _ = ds_test[0]
+
+    @pytest.mark.skipif(
+        not (HAS_TTT_ENGINE and HAS_MODELS_TTT),
+        reason="evaluate_condition or SmallResNetTTT not available",
+    )
+    def test_evaluate_condition_ttt_lr_zero_records_zero_updates(self):
+        model = SmallResNetTTT(num_classes=100)
+        init_state = {k: v.clone() for k, v in model.state_dict().items()}
+        loader = [
+            (torch.rand(1, 3, 32, 32), torch.tensor([i % 20]), [f"test:{i}"])
+            for i in range(4)
+        ]
+
+        for cond in ("standard_ttt", "online_ttt"):
+            summary, _, _ = evaluate_condition(
+                model, loader, condition=cond, ttt_lr=0.0, ttt_steps=3, window_size=2
+            )
+            assert summary["update_count"] == 0
+            for k, v in init_state.items():
+                assert torch.equal(model.state_dict()[k], v)
+
+    @pytest.mark.skipif(
+        not (HAS_TTT_ENGINE and HAS_MODELS_TTT),
+        reason="train_source_model or load_model not available",
+    )
+    @pytest.mark.parametrize("mode", ["supervised", "joint"])
+    def test_train_source_model_roundtrip_with_weights_only(self, tmp_path: Path, mode: str):
+        from src.ttt_cifar100 import load_model, train_source_model
+
+        torch.manual_seed(42)
+        train_ds = [
+            (torch.rand(3, 32, 32), i % 20, f"train:{i}") for i in range(8)
+        ]
+        val_ds = [
+            (torch.rand(3, 32, 32), i % 20, f"train:{100 + i}") for i in range(4)
+        ]
+        train_loader = torch.utils.data.DataLoader(train_ds, batch_size=4, shuffle=False)
+        val_loader = torch.utils.data.DataLoader(val_ds, batch_size=4, shuffle=False)
+
+        ckpt_path = tmp_path / f"exp_b_{mode}_seed42.pt"
+        model, meta = train_source_model(
+            train_loader=train_loader,
+            val_loader=val_loader,
+            mode=mode,
+            epochs=1,
+            lr=1e-3,
+            device="cpu",
+            save_path=ckpt_path,
+            seed=42,
+            config={"paths": {"checkpoint_dir": tmp_path}},
+        )
+        assert ckpt_path.is_file()
+        assert meta["mode"] == mode
+        assert meta["seed"] == 42
+        assert meta["source_updates"] == 2
+        assert 0.0 <= meta["val_acc"] <= 1.0
+        assert 0.0 <= meta["val_rot_acc"] <= 1.0
+
+        loaded_model, loaded_meta = load_model(ckpt_path, device="cpu", num_classes=100)
+        assert loaded_meta["mode"] == mode
+        assert loaded_meta["seed"] == 42
+        for k, v in model.state_dict().items():
+            assert torch.equal(loaded_model.state_dict()[k], v)
+
+    @pytest.mark.skipif(
+        not (HAS_TTT_ENGINE and HAS_MODELS_TTT),
+        reason="tune_validation_lr not available",
+    )
+    def test_tune_validation_lr_offline_no_nameerror(self, tmp_path: Path, monkeypatch):
+        import csv
+        import yaml
+        from src import data as data_mod
+        from src.ttt_cifar100 import tune_validation_lr
+
+        synth = SyntheticCIFAR(num_samples=50000)
+        monkeypatch.setattr(data_mod, "load_dataset", lambda *args, **kwargs: synth)
+
+        ckpt_dir = tmp_path / "ckpts"
+        ckpt_dir.mkdir()
+        torch.save(
+            {
+                "model_state_dict": SmallResNetTTT(num_classes=100).state_dict(),
+                "mode": "joint",
+                "seed": 42,
+            },
+            ckpt_dir / "exp_b_joint_seed42.pt",
+        )
+
+        # Tiny synthetic membership so tuning runs fast offline
+        mem_path = tmp_path / "mem.json"
+        all_rows = list(range(10000))
+        mem_path.write_text(
+            json.dumps({
+                "source_split": "train",
+                "train": all_rows[:9000],
+                "validation": all_rows[9000:],
+            }),
+            encoding="utf-8",
+        )
+
+        # Subset validation via monkeypatched CIFAR100ExpBDataset to keep test sub-second
+        from src import ttt_cifar100 as ttt_mod
+
+        orig_ds_cls = ttt_mod.CIFAR100ExpBDataset
+
+        def tiny_val_ds(*args, **kwargs):
+            ds = orig_ds_cls(*args, **kwargs)
+            ds.indices = ds.indices[:10]
+            return ds
+
+        monkeypatch.setattr(ttt_mod, "CIFAR100ExpBDataset", tiny_val_ds)
+
+        cfg_path = tmp_path / "cfg.yaml"
+        cfg_path.write_text(
+            yaml.safe_dump({
+                "paths": {
+                    "shared_c20_membership": str(mem_path),
+                    "checkpoint_dir": str(ckpt_dir),
+                },
+                "corruption": {"sigma": 0.08, "severity": 3, "noise_seed": 42},
+            }),
+            encoding="utf-8",
+        )
+
+        out_dir = tmp_path / "tuning_out"
+        best_lr = tune_validation_lr(
+            config_path=cfg_path,
+            candidate_lrs=[1e-4, 1e-3],
+            device="cpu",
+            seed=42,
+            output_dir=out_dir,
+        )
+        assert best_lr in (1e-4, 1e-3)
+        tuning_csv = out_dir / "ttt_lr_tuning.csv"
+        assert tuning_csv.is_file()
+        with open(tuning_csv, "r", newline="", encoding="utf-8") as handle:
+            rows = list(csv.DictReader(handle))
+        assert len(rows) == 2
+
+        # Existing CSV protected unless overwrite=True
+        with pytest.raises(FileExistsError):
+            tune_validation_lr(
+                config_path=cfg_path,
+                candidate_lrs=[1e-4],
+                device="cpu",
+                seed=42,
+                output_dir=out_dir,
+            )
+
+    @pytest.mark.skipif(
+        not (HAS_TTT_ENGINE and HAS_MODELS_TTT),
+        reason="run_smoke_test not available",
+    )
+    def test_run_smoke_test_honors_config_and_protects_existing(
+        self, tmp_path: Path, monkeypatch
+    ):
+        import csv
+        import yaml
+        from src import data as data_mod
+        from src import ttt_cifar100 as ttt_mod
+        from src.ttt_cifar100 import run_smoke_test
+
+        synth = SyntheticCIFAR(num_samples=50000)
+        monkeypatch.setattr(data_mod, "load_dataset", lambda *args, **kwargs: synth)
+
+        test_mem = tmp_path / "test_mem.json"
+        test_mem.write_text(
+            json.dumps({
+                "source_split": "test",
+                "classes": list(range(20)),
+                "num_samples": 2000,
+                "test": list(range(2000)),
+            }),
+            encoding="utf-8",
+        )
+
+        cfg_path = tmp_path / "smoke_cfg.yaml"
+        cfg_path.write_text(
+            yaml.safe_dump({
+                "adaptation": {"ttt_lr": 0.005, "ttt_steps": 1, "lambda_rot": 1.0},
+                "corruption": {"sigma": 0.05, "severity": 2, "noise_seed": 11},
+                "evaluation": {"window_size": 64, "pilot_seed": 42},
+                "paths": {"exp_b_test_membership": str(test_mem)},
+            }),
+            encoding="utf-8",
+        )
+
+        out_dir = tmp_path / "smoke_out"
+        run_smoke_test(config_path=cfg_path, output_dir=out_dir, device="cpu")
+
+        summary_csv = out_dir / "ttt_summary.csv"
+        window_csv = out_dir / "ttt_window_summary.csv"
+        assert summary_csv.is_file() and window_csv.is_file()
+
+        with open(summary_csv, "r", newline="", encoding="utf-8") as handle:
+            s_rows = list(csv.DictReader(handle))
+        assert len(s_rows) == 8
+        assert all(float(r["learning_rate"]) == pytest.approx(0.005) for r in s_rows)
+        noisy_rows = [r for r in s_rows if r["corruption"] == "gaussian_noise"]
+        assert all(str(r["severity"]) == "2" for r in noisy_rows)
+
+        with open(window_csv, "r", newline="", encoding="utf-8") as handle:
+            w_rows = list(csv.DictReader(handle))
+        # 128 images / window_size=64 -> 2 windows per run -> 16 rows
+        assert len(w_rows) == 16
+
+        with pytest.raises(FileExistsError):
+            run_smoke_test(config_path=cfg_path, output_dir=out_dir, device="cpu")
+
+    def test_ttt_cifar100_cli_smoke_test_and_overwrite_protection(
+        self, tmp_path: Path, monkeypatch
+    ):
+        import csv
+        import subprocess
+        import sys
+        import yaml
+        from src import ttt_cifar100 as ttt_mod
+
+        # 1. Existing output CSV protection via real CLI subprocess
+        protected_dir = tmp_path / "protected"
+        protected_dir.mkdir()
+        sentinel_summary = protected_dir / "ttt_summary.csv"
+        sentinel_summary.write_text("do_not_delete\n", encoding="utf-8")
+
+        proc_refused = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "src.ttt_cifar100",
+                "--pilot",
+                "--output",
+                str(protected_dir),
+                "--device",
+                "cpu",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        assert proc_refused.returncode != 0
+        assert "Refusing to overwrite" in proc_refused.stderr
+        assert sentinel_summary.read_text(encoding="utf-8") == "do_not_delete\n"
+
+        # 2. Config YAML hygiene check: no duplicate source_train block, explicit noise_seed
+        cfg_text = yaml.safe_load(Path("configs/ttt_cifar100_exp_b.yaml").read_text(encoding="utf-8"))
+        assert "source_training" in cfg_text
+        assert "source_train" not in cfg_text
+        assert cfg_text["corruption"]["noise_seed"] == 42
+
+        # 3. Full main() pilot flow in-process with tiny synthetic loaders + --overwrite
+        ckpt_dir = tmp_path / "ckpts"
+        ckpt_dir.mkdir()
+        torch.save(
+            {"model_state_dict": SmallResNetTTT(num_classes=100).state_dict(), "mode": "supervised", "seed": 43},
+            ckpt_dir / "exp_b_supervised_seed43.pt",
+        )
+        torch.save(
+            {"model_state_dict": SmallResNetTTT(num_classes=100).state_dict(), "mode": "joint", "seed": 43},
+            ckpt_dir / "exp_b_joint_seed43.pt",
+        )
+
+        cli_cfg = tmp_path / "cli_cfg.yaml"
+        cli_cfg.write_text(
+            yaml.safe_dump({
+                "adaptation": {"ttt_lr": 0.001, "ttt_steps": 1, "lambda_rot": 1.0},
+                "corruption": {"sigma": 0.08, "severity": 3, "noise_seed": 42},
+                "evaluation": {"window_size": 2},
+                "paths": {"checkpoint_dir": str(ckpt_dir)},
+            }),
+            encoding="utf-8",
+        )
+
+        seen_noise_seeds = []
+
+        def fake_get_exp_b_loader(*, corruption="clean", noise_seed=42, **kwargs):
+            if corruption == "gaussian_noise":
+                seen_noise_seeds.append(noise_seed)
+            return [
+                (torch.rand(1, 3, 32, 32), torch.tensor([i % 20]), [f"test:{i}"])
+                for i in range(4)
+            ]
+
+        monkeypatch.setattr(ttt_mod, "get_exp_b_loader", fake_get_exp_b_loader)
+        out_dir = tmp_path / "cli_out"
+        out_dir.mkdir()
+        (out_dir / "ttt_summary.csv").write_text("old\n", encoding="utf-8")
+
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "src.ttt_cifar100",
+                "--config",
+                str(cli_cfg),
+                "--output",
+                str(out_dir),
+                "--seeds",
+                "43",
+                "--device",
+                "cpu",
+                "--overwrite",
+            ],
+        )
+        ttt_mod.main()
+
+        # noise_seed remained decoupled (42 from config, not seed=43)
+        assert seen_noise_seeds == [42]
+        with open(out_dir / "ttt_summary.csv", "r", newline="", encoding="utf-8") as handle:
+            rows = list(csv.DictReader(handle))
+        assert len(rows) == 8
+        assert all(int(r["seed"]) == 43 for r in rows)
+
+        # 4. Real CLI subprocess smoke-test when CIFAR-100 is cached locally
+        if Path("data/raw/uoft-cs___cifar100").exists():
+            smoke_cli_out = tmp_path / "cli_smoke"
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "src.ttt_cifar100",
+                    "--smoke-test",
+                    "--output",
+                    str(smoke_cli_out),
+                    "--device",
+                    "cpu",
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            assert (smoke_cli_out / "ttt_summary.csv").is_file()
+            assert (smoke_cli_out / "ttt_window_summary.csv").is_file()
+
+    def test_generate_plot_dynamic_limits_and_annotation(self, tmp_path: Path):
+        import csv
+        from results.generate_plot import generate_stream_plot
+
+        win_csv = tmp_path / "windows.csv"
+        out_png = tmp_path / "plot.png"
+        fieldnames = [
+            "run_id",
+            "experiment",
+            "condition",
+            "seed",
+            "window_index",
+            "start_sample",
+            "end_sample",
+            "window_size",
+            "correct_count",
+            "accuracy",
+        ]
+        rows = [
+            # Clean stream outside [20, 80] (90%)
+            {
+                "run_id": "exp_b_joint_frozen_clean_seed42",
+                "experiment": "B",
+                "condition": "joint_frozen",
+                "seed": 42,
+                "window_index": 0,
+                "start_sample": 0,
+                "end_sample": 100,
+                "window_size": 100,
+                "correct_count": 90,
+                "accuracy": 0.90,
+            },
+            # Noise stream where online_ttt loses -5.0 pp and sits below 20% (10%)
+            {
+                "run_id": "exp_b_joint_frozen_gaussian_noise_seed42",
+                "experiment": "B",
+                "condition": "joint_frozen",
+                "seed": 42,
+                "window_index": 0,
+                "start_sample": 0,
+                "end_sample": 100,
+                "window_size": 100,
+                "correct_count": 15,
+                "accuracy": 0.15,
+            },
+            {
+                "run_id": "exp_b_online_ttt_gaussian_noise_seed42",
+                "experiment": "B",
+                "condition": "online_ttt",
+                "seed": 42,
+                "window_index": 0,
+                "start_sample": 0,
+                "end_sample": 100,
+                "window_size": 100,
+                "correct_count": 10,
+                "accuracy": 0.10,
+            },
+        ]
+        with open(win_csv, "w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+
+        generate_stream_plot(window_csv_path=str(win_csv), output_png_path=str(out_png))
+        assert out_png.is_file() and out_png.stat().st_size > 0
+
+        real_csv = Path("results/ttt_window_summary.csv")
+        if real_csv.is_file():
+            real_png = tmp_path / "real_plot.png"
+            generate_stream_plot(window_csv_path=str(real_csv), output_png_path=str(real_png))
+            assert real_png.is_file() and real_png.stat().st_size > 0
+
+    @pytest.mark.skipif(
+        not (HAS_TTT_ENGINE and HAS_MODELS_TTT),
+        reason="evaluate_condition or SmallResNetTTT not available",
+    )
+    def test_evaluate_condition_batched_two_tuples_and_tune_lr_seed_routing(
+        self, tmp_path: Path, monkeypatch
+    ):
+        import os
+        import sys
+        import yaml
+        from src import ttt_cifar100 as ttt_mod
+
+        model = SmallResNetTTT(num_classes=100)
+        batched_2tuple = [
+            (torch.rand(2, 3, 32, 32), torch.tensor([0, 1])),
+            (torch.rand(2, 3, 32, 32), torch.tensor([2, 3])),
+        ]
+        _, _, logs = evaluate_condition(model, batched_2tuple, condition="supervised_frozen", window_size=2)
+        assert [r["sample_id"] for r in logs] == ["sample_0", "sample_1", "sample_2", "sample_3"]
+
+        # Stale .tmp.<pid> staging file must not leak rows into final CSV
+        out_dir = tmp_path / "stale_stage"
+        out_dir.mkdir()
+        stale_summary = out_dir / f".ttt_summary.csv.tmp.{os.getpid()}"
+        stale_summary.write_text("stale,row\n", encoding="utf-8")
+
+        ckpt_dir = tmp_path / "ckpts"
+        ckpt_dir.mkdir()
+        torch.save(
+            {"model_state_dict": model.state_dict(), "mode": "supervised", "seed": 42},
+            ckpt_dir / "exp_b_supervised_seed42.pt",
+        )
+        torch.save(
+            {"model_state_dict": model.state_dict(), "mode": "joint", "seed": 42},
+            ckpt_dir / "exp_b_joint_seed42.pt",
+        )
+        cfg_path = tmp_path / "cfg.yaml"
+        cfg_path.write_text(
+            yaml.safe_dump({"paths": {"checkpoint_dir": str(ckpt_dir)}, "evaluation": {"window_size": 2}}),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr(
+            ttt_mod,
+            "get_exp_b_loader",
+            lambda **kwargs: [(torch.rand(1, 3, 32, 32), torch.tensor([0]), ["test:0"])],
+        )
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["src.ttt_cifar100", "--config", str(cfg_path), "--output", str(out_dir), "--pilot", "--device", "cpu"],
+        )
+        ttt_mod.main()
+        summary_lines = (out_dir / "ttt_summary.csv").read_text(encoding="utf-8").splitlines()
+        assert len(summary_lines) == 9  # 1 header + 8 condition/corruption rows, no stale rows
+
+        # --tune-lr --seeds 43 forwards seed=43 rather than hardcoding 42
+        captured = {}
+        monkeypatch.setattr(ttt_mod, "tune_validation_lr", lambda **kw: captured.update(kw) or 0.001)
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["src.ttt_cifar100", "--config", str(cfg_path), "--output", str(tmp_path), "--tune-lr", "--seeds", "43"],
+        )
+        ttt_mod.main()
+        assert captured["seed"] == 43
+
+    @pytest.mark.skipif(
+        not (HAS_TTT_ENGINE and HAS_MODELS_TTT),
+        reason="train_source_model or load_model not available",
+    )
+    def test_train_source_model_null_st_cfg_augment_flag_and_arch_keys(
+        self, tmp_path: Path, monkeypatch
+    ):
+        from src import ttt_cifar100 as ttt_mod
+        from src.ttt_cifar100 import load_model, train_source_model
+
+        seen_calls = []
+        tiny_train = torch.utils.data.DataLoader(
+            [(torch.rand(3, 32, 32), i % 20, f"train:{i}") for i in range(4)],
+            batch_size=2,
+        )
+        tiny_val = torch.utils.data.DataLoader(
+            [(torch.rand(3, 32, 32), i % 20, f"train:{100 + i}") for i in range(2)],
+            batch_size=2,
+        )
+
+        def fake_get_exp_b_loaders(**kwargs):
+            seen_calls.append(kwargs)
+            return tiny_train, tiny_val, tiny_val
+
+        monkeypatch.setattr(ttt_mod, "get_exp_b_loaders", fake_get_exp_b_loaders)
+
+        # 1. source_training.augment: false forwards augment_train=False; None fields fall back cleanly
+        ckpt1 = tmp_path / "custom_arch.pt"
+        model1, meta1 = train_source_model(
+            mode="supervised",
+            epochs=1,
+            device="cpu",
+            save_path=ckpt1,
+            seed=7,
+            config={
+                "num_outputs": 50,
+                "num_groups": 8,
+                "dropout": 0.35,
+                "in_channels": 3,
+                "mean": [0.4, 0.5, 0.6],
+                "std": [0.2, 0.25, 0.3],
+                "source_training": {
+                    "epochs": None,
+                    "learning_rate": None,
+                    "weight_decay": None,
+                    "pct_start": None,
+                    "lambda_rot": None,
+                    "batch_size": None,
+                    "augment": False,
+                },
+            },
+        )
+        assert len(seen_calls) == 1
+        assert seen_calls[0]["augment_train"] is False
+        assert seen_calls[0]["batch_size"] == 64
+        assert meta1["epoch"] == 1
+        assert model1.classifier[-1].out_features == 50
+        assert model1.classifier[0].p == pytest.approx(0.35)
+        assert all(
+            m.num_groups == 8 for m in model1.modules() if isinstance(m, nn.GroupNorm)
+        )
+        assert torch.allclose(model1.mean.view(-1), torch.tensor([0.4, 0.5, 0.6]))
+        assert torch.allclose(model1.std.view(-1), torch.tensor([0.2, 0.25, 0.3]))
+
+        # Matching config loads cleanly; conflicting config fields raise ValueError
+        loaded1, _ = load_model(
+            ckpt1,
+            device="cpu",
+            model_config={
+                "num_outputs": 50,
+                "num_groups": 8,
+                "dropout": 0.35,
+                "in_channels": 3,
+                "mean": [0.4, 0.5, 0.6],
+                "std": [0.2, 0.25, 0.3],
+            },
+        )
+        assert loaded1.classifier[-1].out_features == 50
+
+        for bad_override in (
+            {"num_groups": 16},
+            {"num_outputs": 100},
+            {"dropout": 0.1},
+            {"mean": [0.5, 0.5, 0.5]},
+            {"std": [0.5, 0.5, 0.5]},
+        ):
+            bad_cfg = {
+                "num_outputs": 50,
+                "num_groups": 8,
+                "dropout": 0.35,
+                "in_channels": 3,
+                "mean": [0.4, 0.5, 0.6],
+                "std": [0.2, 0.25, 0.3],
+                **bad_override,
+            }
+            with pytest.raises(ValueError):
+                load_model(ckpt1, device="cpu", model_config=bad_cfg)
+
+        # 2. augment: null defaults to augment_train=True
+        ckpt2 = tmp_path / "default_aug.pt"
+        train_source_model(
+            mode="joint",
+            epochs=1,
+            device="cpu",
+            save_path=ckpt2,
+            seed=8,
+            config={"source_training": {"augment": None}},
+        )
+        assert seen_calls[1]["augment_train"] is True
+
+    @pytest.mark.skipif(
+        not (HAS_TTT_ENGINE and HAS_MODELS_TTT),
+        reason="main or SmallResNetTTT not available",
+    )
+    def test_main_validates_conflicting_yaml_and_honors_conditions_and_arch(
+        self, tmp_path: Path, monkeypatch
+    ):
+        import csv
+        import sys
+        import yaml
+        from src import ttt_cifar100 as ttt_mod
+
+        ckpt_dir = tmp_path / "ckpts"
+        ckpt_dir.mkdir()
+        model = SmallResNetTTT(num_classes=100, num_groups=16)
+        torch.save(
+            {
+                "model_state_dict": model.state_dict(),
+                "mode": "supervised",
+                "seed": 42,
+                "config": {"num_outputs": 100, "num_groups": 16, "dropout": 0.2},
+            },
+            ckpt_dir / "exp_b_supervised_seed42.pt",
+        )
+        torch.save(
+            {
+                "model_state_dict": model.state_dict(),
+                "mode": "joint",
+                "seed": 42,
+                "config": {"num_outputs": 100, "num_groups": 16, "dropout": 0.2},
+            },
+            ckpt_dir / "exp_b_joint_seed42.pt",
+        )
+
+        monkeypatch.setattr(
+            ttt_mod,
+            "get_exp_b_loader",
+            lambda **kwargs: [(torch.rand(1, 3, 32, 32), torch.tensor([0]), ["test:0"])],
+        )
+
+        # Conflicting adaptation / corruption / evaluation / model fields must fail fast
+        bad_configs = [
+            ({"adaptation": {"ttt_optimizer": "adam"}}, "ttt_optimizer"),
+            ({"adaptation": {"test_batch_size": 4}}, "test_batch_size"),
+            ({"adaptation": {"test_batch_size": True}}, "test_batch_size"),
+            ({"corruption": {"type": "shot_noise"}}, "corruption.type"),
+            ({"evaluation": {"conditions": ["bad_cond"]}}, "evaluation.conditions"),
+            ({"evaluation": {"conditions": []}}, "evaluation.conditions"),
+            ({"evaluation": {"conditions": ["joint_frozen", "joint_frozen"]}}, "duplicate"),
+            ({"num_groups": 8}, "num_groups"),
+            ({"num_outputs": 50}, "num_outputs"),
+        ]
+        for idx, (override, err_match) in enumerate(bad_configs):
+            cfg_p = tmp_path / f"bad_{idx}.yaml"
+            base = {
+                "paths": {"checkpoint_dir": str(ckpt_dir)},
+                "evaluation": {"window_size": 1},
+            }
+            for k, v in override.items():
+                if isinstance(v, dict) and isinstance(base.get(k), dict):
+                    base[k] = {**base[k], **v}
+                else:
+                    base[k] = v
+            cfg_p.write_text(yaml.safe_dump(base), encoding="utf-8")
+            out_p = tmp_path / f"bad_out_{idx}"
+            monkeypatch.setattr(
+                sys,
+                "argv",
+                ["src.ttt_cifar100", "--config", str(cfg_p), "--output", str(out_p), "--pilot", "--device", "cpu"],
+            )
+            with pytest.raises(ValueError, match=err_match):
+                ttt_mod.main()
+
+        # Subset evaluation.conditions runs only those configured conditions
+        subset_cfg = tmp_path / "subset.yaml"
+        subset_cfg.write_text(
+            yaml.safe_dump({
+                "paths": {"checkpoint_dir": str(ckpt_dir)},
+                "evaluation": {"window_size": 1, "conditions": ["joint_frozen", "online_ttt"]},
+            }),
+            encoding="utf-8",
+        )
+        subset_out = tmp_path / "subset_out"
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "src.ttt_cifar100",
+                "--config",
+                str(subset_cfg),
+                "--output",
+                str(subset_out),
+                "--pilot",
+                "--device",
+                "cpu",
+            ],
+        )
+        ttt_mod.main()
+        with open(subset_out / "ttt_summary.csv", "r", newline="", encoding="utf-8") as handle:
+            rows = list(csv.DictReader(handle))
+        assert len(rows) == 4  # 2 conditions * 2 corruptions
+        assert {r["condition"] for r in rows} == {"joint_frozen", "online_ttt"}
+
+    @pytest.mark.skipif(
+        not (HAS_TTT_ENGINE and HAS_MODELS_TTT and HAS_DATA_EXP_B),
+        reason="train_source_model, SmallResNetTTT, or data helpers not available",
+    )
+    def test_source_training_validation_real_augment_and_in_channels(
+        self, tmp_path: Path, monkeypatch
+    ):
+        from torchvision import transforms
+        from src import data as data_mod
+        from src import ttt_cifar100 as ttt_mod
+        from src.ttt_cifar100 import _validate_exp_b_config, load_model, train_source_model
+
+        # 1. Invalid source_training, momentum, and NaN/Inf architecture keys fail fast
+        for bad_cfg in (
+            {"source_training": {"optimizer": "sgd"}},
+            {"source_training": {"scheduler": "cosine"}},
+            {"source_training": {"augment": "false"}},
+            {"source_training": {"epochs": 0}},
+            {"source_training": {"epochs": True}},
+            {"source_training": {"batch_size": 0}},
+            {"adaptation": {"ttt_momentum": 0.9}},
+            {"mean": [float("nan"), 0.5, 0.5]},
+            {"std": [float("inf"), 0.5, 0.5]},
+            {"in_channels": 1},
+        ):
+            with pytest.raises(ValueError):
+                _validate_exp_b_config(bad_cfg)
+
+        # 2. Real get_exp_b_loaders + CIFAR100ExpBDataset verifies augment_train=False vs True
+        synth = SyntheticCIFAR(num_samples=50000)
+        monkeypatch.setattr(data_mod, "load_dataset", lambda *args, **kwargs: synth)
+
+        mem_path = tmp_path / "mem.json"
+        all_rows = list(range(10000))
+        mem_path.write_text(
+            json.dumps({
+                "source_split": "train",
+                "train": all_rows[:9000],
+                "validation": all_rows[9000:],
+            }),
+            encoding="utf-8",
+        )
+        test_mem = tmp_path / "test_mem.json"
+        test_mem.write_text(
+            json.dumps({
+                "source_split": "test",
+                "classes": list(range(20)),
+                "num_samples": 2000,
+                "test": list(range(2000)),
+            }),
+            encoding="utf-8",
+        )
+
+        captured_transforms = []
+        orig_get_loaders = data_mod.get_exp_b_loaders
+
+        def spy_get_loaders(**kwargs):
+            tr, va, te = orig_get_loaders(**kwargs)
+            captured_transforms.append(tr.dataset.transform)
+            tr.dataset.indices = tr.dataset.indices[:4]
+            va.dataset.indices = va.dataset.indices[:2]
+            return tr, va, te
+
+        monkeypatch.setattr(ttt_mod, "get_exp_b_loaders", spy_get_loaders)
+
+        train_source_model(
+            mode="supervised",
+            epochs=1,
+            device="cpu",
+            save_path=tmp_path / "real_noaug.pt",
+            config={
+                "paths": {
+                    "shared_c20_membership": str(mem_path),
+                    "exp_b_test_membership": str(test_mem),
+                },
+                "source_training": {"batch_size": 2, "augment": False},
+            },
+        )
+        train_source_model(
+            mode="supervised",
+            epochs=1,
+            device="cpu",
+            save_path=tmp_path / "real_aug.pt",
+            config={
+                "paths": {
+                    "shared_c20_membership": str(mem_path),
+                    "exp_b_test_membership": str(test_mem),
+                },
+                "source_training": {"batch_size": 2, "augment": True},
+            },
+        )
+        assert isinstance(captured_transforms[0], transforms.ToTensor)
+        assert isinstance(captured_transforms[1], transforms.Compose)
+
+        # 3. Custom in_channels=1 with matching mean/std roundtrips and rejects mismatches
+        m_1ch = SmallResNetTTT(num_classes=100, in_channels=1, mean=[0.5], std=[0.2])
+        ckpt_1ch = tmp_path / "one_ch.pt"
+        torch.save(
+            {
+                "model_state_dict": m_1ch.state_dict(),
+                "mode": "joint",
+                "seed": 42,
+                "config": {"in_channels": 1, "mean": [0.5], "std": [0.2]},
+            },
+            ckpt_1ch,
+        )
+        loaded_1ch, _ = load_model(
+            ckpt_1ch,
+            device="cpu",
+            model_config={"in_channels": 1, "mean": [0.5], "std": [0.2]},
+        )
+        assert loaded_1ch.features[0][0].in_channels == 1
+        with pytest.raises(ValueError, match="mean"):
+            load_model(ckpt_1ch, device="cpu", model_config={"in_channels": 1, "mean": [0.5, 0.5]})
+        with pytest.raises(ValueError, match="in_channels"):
+            load_model(ckpt_1ch, device="cpu", model_config={"in_channels": 3})
+
+        raw_1ch = tmp_path / "raw_1ch.pt"
+        torch.save(m_1ch.state_dict(), raw_1ch)
+        with pytest.raises(ValueError, match="mean/std length"):
+            load_model(
+                raw_1ch,
+                device="cpu",
+                model_config={"in_channels": 1, "mean": [0.5, 0.5], "std": [0.2]},
+            )
+
+        # CLI main() runs end-to-end with custom in_channels=1 + matching mean/std
+        import sys
+        import yaml
+
+        cli_ckpt_dir = tmp_path / "cli_1ch_ckpts"
+        cli_ckpt_dir.mkdir()
+        torch.save(
+            {
+                "model_state_dict": m_1ch.state_dict(),
+                "mode": "joint",
+                "seed": 42,
+                "config": {"in_channels": 1, "mean": [0.5], "std": [0.2]},
+            },
+            cli_ckpt_dir / "exp_b_joint_seed42.pt",
+        )
+        cli_1ch_cfg = tmp_path / "cli_1ch.yaml"
+        cli_1ch_cfg.write_text(
+            yaml.safe_dump({
+                "in_channels": 1,
+                "mean": [0.5],
+                "std": [0.2],
+                "paths": {"checkpoint_dir": str(cli_ckpt_dir)},
+                "evaluation": {"window_size": 1, "conditions": ["joint_frozen"]},
+            }),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(
+            ttt_mod,
+            "get_exp_b_loader",
+            lambda **kwargs: [(torch.rand(1, 1, 32, 32), torch.tensor([0]), ["test:0"])],
+        )
+        cli_1ch_out = tmp_path / "cli_1ch_out"
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "src.ttt_cifar100",
+                "--config",
+                str(cli_1ch_cfg),
+                "--output",
+                str(cli_1ch_out),
+                "--pilot",
+                "--device",
+                "cpu",
+            ],
+        )
+        ttt_mod.main()
+        assert (cli_1ch_out / "ttt_summary.csv").is_file()

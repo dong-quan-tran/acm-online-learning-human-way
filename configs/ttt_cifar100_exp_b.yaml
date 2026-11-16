@@ -19,17 +19,6 @@ source_training:
   lambda_rot: 1.0
   augment: true
 
-source_train:
-  epochs: 15
-  batch_size: 64
-  optimizer: "adamw"
-  learning_rate: 0.001
-  weight_decay: 0.0005
-  scheduler: "onecyclelr"
-  pct_start: 0.15
-  lambda_rot: 1.0
-  augment: true
-
 adaptation:
   ttt_optimizer: "sgd"
   ttt_momentum: 0.0
@@ -42,6 +31,7 @@ corruption:
   type: "gaussian_noise"
   sigma: 0.08
   severity: 3
+  noise_seed: 42
   noise_space: "pixel_[0,1]_clamped"
 
 evaluation:
