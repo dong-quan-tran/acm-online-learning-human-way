@@ -1,0 +1,169 @@
+{
+  "experiment": "B",
+  "seed": 42,
+  "device": "cpu",
+  "code_version": "010226f",
+  "config_path": "configs/ttt_cifar100_exp_b_held_out.yaml",
+  "split_locations": "data/ttt_exp_b_held_out_draft.json",
+  "output_csv": "results\\khoi_draft_205.csv",
+  "output_checks": "results\\khoi_draft_205_checks.json",
+  "timing_semantics": {
+    "adaptation_time_seconds": "Cumulative adaptation wall time since stream start for this condition; identical across clean/noisy held-out rows at the same checkpoint (do not sum across rows).",
+    "adaptation_interval_time_seconds": "Adaptation wall time since the previous checkpoint for this stream.",
+    "held_out_eval_time_seconds": "Wall time for this individual held-out evaluation pass (per view, per checkpoint).",
+    "cumulative_held_out_eval_time_seconds": "Cumulative held-out evaluation wall time across checkpoints for this held_out_condition view."
+  },
+  "settings": {
+    "conditions": [
+      "supervised_frozen",
+      "joint_frozen",
+      "online_ttt"
+    ],
+    "adaptation_streams": [
+      "clean",
+      "noisy"
+    ],
+    "held_out_views": [
+      "clean",
+      "noisy"
+    ],
+    "ttt_optimizer": "sgd",
+    "eval_interval": 100,
+    "eval_batch_size": 64,
+    "ttt_lr": 0.001,
+    "ttt_steps": 1,
+    "ttt_momentum": 0.0,
+    "lambda_rot": 1.0,
+    "noise_sigma": 0.08,
+    "noise_seed": 42,
+    "max_adapt_images": 205
+  },
+  "split_checks": {
+    "adaptation_count": 1500,
+    "held_out_count": 500,
+    "adaptation_key": "adaptation_ids",
+    "held_out_key": "held_out_ids",
+    "adaptation_metadata": {
+      "status": "draft",
+      "split_seed": 42,
+      "interval": 100,
+      "prior_evaluation_reuse": true,
+      "dataset": "CIFAR-100 classes 0-19",
+      "corruption": "gaussian_noise",
+      "noise_sigma": 0.08,
+      "noise_seed": 42,
+      "preprocessing": "RGB CHW ToTensor; noise in [0,1] before model normalization",
+      "resolved_key": "adaptation_ids"
+    },
+    "held_out_metadata": {
+      "status": "draft",
+      "split_seed": 42,
+      "interval": 100,
+      "prior_evaluation_reuse": true,
+      "dataset": "CIFAR-100 classes 0-19",
+      "corruption": "gaussian_noise",
+      "noise_sigma": 0.08,
+      "noise_seed": 42,
+      "preprocessing": "RGB CHW ToTensor; noise in [0,1] before model normalization",
+      "resolved_key": "held_out_ids"
+    },
+    "held_out_examined_in_prior_exp_b": true,
+    "held_out_prior_overlap_count": 500,
+    "adaptation_prior_overlap_count": 1500,
+    "adaptation_count_effective": 205
+  },
+  "runs": [
+    {
+      "condition": "supervised_frozen",
+      "adaptation_stream_condition": "none",
+      "held_out_views": [
+        "clean",
+        "noisy"
+      ],
+      "checkpoints_evaluated": [
+        0
+      ],
+      "total_adaptation_images": 0,
+      "total_updates": 0,
+      "total_adaptation_time_seconds": 0.0,
+      "total_held_out_eval_time_by_view": {
+        "clean": 2.0852514000143856,
+        "noisy": 2.011700799979735
+      },
+      "total_held_out_eval_time_seconds": 4.096952199994121,
+      "all_invariants_passed": true
+    },
+    {
+      "condition": "joint_frozen",
+      "adaptation_stream_condition": "none",
+      "held_out_views": [
+        "clean",
+        "noisy"
+      ],
+      "checkpoints_evaluated": [
+        0
+      ],
+      "total_adaptation_images": 0,
+      "total_updates": 0,
+      "total_adaptation_time_seconds": 0.0,
+      "total_held_out_eval_time_by_view": {
+        "clean": 2.009935299982317,
+        "noisy": 1.9582749000401236
+      },
+      "total_held_out_eval_time_seconds": 3.9682102000224404,
+      "all_invariants_passed": true
+    },
+    {
+      "condition": "online_ttt",
+      "adaptation_stream_condition": "clean",
+      "held_out_views": [
+        "clean",
+        "noisy"
+      ],
+      "checkpoints_evaluated": [
+        0,
+        100,
+        200,
+        205
+      ],
+      "total_adaptation_images": 205,
+      "total_updates": 205,
+      "total_adaptation_time_seconds": 8.941231800010428,
+      "total_held_out_eval_time_by_view": {
+        "clean": 7.634718199959025,
+        "noisy": 7.6946921000489965
+      },
+      "total_held_out_eval_time_seconds": 15.329410300008021,
+      "frozen_heads_preserved": true,
+      "features_adapted": true,
+      "all_invariants_passed": true
+    },
+    {
+      "condition": "online_ttt",
+      "adaptation_stream_condition": "noisy",
+      "held_out_views": [
+        "clean",
+        "noisy"
+      ],
+      "checkpoints_evaluated": [
+        0,
+        100,
+        200,
+        205
+      ],
+      "total_adaptation_images": 205,
+      "total_updates": 205,
+      "total_adaptation_time_seconds": 8.593790400016587,
+      "total_held_out_eval_time_by_view": {
+        "clean": 7.4435310999979265,
+        "noisy": 7.485904200002551
+      },
+      "total_held_out_eval_time_seconds": 14.929435300000478,
+      "frozen_heads_preserved": true,
+      "features_adapted": true,
+      "all_invariants_passed": true
+    }
+  ],
+  "total_rows_written": 20,
+  "all_checks_passed": true
+}
