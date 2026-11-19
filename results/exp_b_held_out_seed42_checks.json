@@ -1,0 +1,193 @@
+{
+  "experiment": "B",
+  "seed": 42,
+  "device": "cuda",
+  "code_version": "010226f",
+  "config_path": "configs/ttt_cifar100_exp_b_held_out.yaml",
+  "split_locations": "data/ttt_exp_b_held_out_draft.json",
+  "output_csv": "results/exp_b_held_out_seed42.csv",
+  "output_checks": "results/exp_b_held_out_seed42_checks.json",
+  "timing_semantics": {
+    "adaptation_time_seconds": "Cumulative adaptation wall time since stream start for this condition; identical across clean/noisy held-out rows at the same checkpoint (do not sum across rows).",
+    "adaptation_interval_time_seconds": "Adaptation wall time since the previous checkpoint for this stream.",
+    "held_out_eval_time_seconds": "Wall time for this individual held-out evaluation pass (per view, per checkpoint).",
+    "cumulative_held_out_eval_time_seconds": "Cumulative held-out evaluation wall time across checkpoints for this held_out_condition view."
+  },
+  "settings": {
+    "conditions": [
+      "supervised_frozen",
+      "joint_frozen",
+      "online_ttt"
+    ],
+    "adaptation_streams": [
+      "clean",
+      "noisy"
+    ],
+    "held_out_views": [
+      "clean",
+      "noisy"
+    ],
+    "ttt_optimizer": "sgd",
+    "eval_interval": 100,
+    "eval_batch_size": 64,
+    "ttt_lr": 0.001,
+    "ttt_steps": 1,
+    "ttt_momentum": 0.0,
+    "lambda_rot": 1.0,
+    "noise_sigma": 0.08,
+    "noise_seed": 42,
+    "max_adapt_images": null
+  },
+  "split_checks": {
+    "adaptation_count": 1500,
+    "held_out_count": 500,
+    "adaptation_key": "adaptation_ids",
+    "held_out_key": "held_out_ids",
+    "adaptation_metadata": {
+      "status": "draft",
+      "split_seed": 42,
+      "interval": 100,
+      "prior_evaluation_reuse": true,
+      "dataset": "CIFAR-100 classes 0-19",
+      "corruption": "gaussian_noise",
+      "noise_sigma": 0.08,
+      "noise_seed": 42,
+      "preprocessing": "RGB CHW ToTensor; noise in [0,1] before model normalization",
+      "resolved_key": "adaptation_ids"
+    },
+    "held_out_metadata": {
+      "status": "draft",
+      "split_seed": 42,
+      "interval": 100,
+      "prior_evaluation_reuse": true,
+      "dataset": "CIFAR-100 classes 0-19",
+      "corruption": "gaussian_noise",
+      "noise_sigma": 0.08,
+      "noise_seed": 42,
+      "preprocessing": "RGB CHW ToTensor; noise in [0,1] before model normalization",
+      "resolved_key": "held_out_ids"
+    },
+    "held_out_examined_in_prior_exp_b": true,
+    "held_out_prior_overlap_count": 500,
+    "adaptation_prior_overlap_count": 1500,
+    "adaptation_count_effective": 1500
+  },
+  "runs": [
+    {
+      "condition": "supervised_frozen",
+      "adaptation_stream_condition": "none",
+      "held_out_views": [
+        "clean",
+        "noisy"
+      ],
+      "checkpoints_evaluated": [
+        0
+      ],
+      "total_adaptation_images": 0,
+      "total_updates": 0,
+      "total_adaptation_time_seconds": 0.0,
+      "total_held_out_eval_time_by_view": {
+        "clean": 0.08592608600002904,
+        "noisy": 0.08108756500001846
+      },
+      "total_held_out_eval_time_seconds": 0.1670136510000475,
+      "all_invariants_passed": true
+    },
+    {
+      "condition": "joint_frozen",
+      "adaptation_stream_condition": "none",
+      "held_out_views": [
+        "clean",
+        "noisy"
+      ],
+      "checkpoints_evaluated": [
+        0
+      ],
+      "total_adaptation_images": 0,
+      "total_updates": 0,
+      "total_adaptation_time_seconds": 0.0,
+      "total_held_out_eval_time_by_view": {
+        "clean": 0.06043137699998624,
+        "noisy": 0.059169136999969396
+      },
+      "total_held_out_eval_time_seconds": 0.11960051399995564,
+      "all_invariants_passed": true
+    },
+    {
+      "condition": "online_ttt",
+      "adaptation_stream_condition": "clean",
+      "held_out_views": [
+        "clean",
+        "noisy"
+      ],
+      "checkpoints_evaluated": [
+        0,
+        100,
+        200,
+        300,
+        400,
+        500,
+        600,
+        700,
+        800,
+        900,
+        1000,
+        1100,
+        1200,
+        1300,
+        1400,
+        1500
+      ],
+      "total_adaptation_images": 1500,
+      "total_updates": 1500,
+      "total_adaptation_time_seconds": 11.057493290000082,
+      "total_held_out_eval_time_by_view": {
+        "clean": 0.8661880560001123,
+        "noisy": 0.8981008609998185
+      },
+      "total_held_out_eval_time_seconds": 1.7642889169999307,
+      "frozen_heads_preserved": true,
+      "features_adapted": true,
+      "all_invariants_passed": true
+    },
+    {
+      "condition": "online_ttt",
+      "adaptation_stream_condition": "noisy",
+      "held_out_views": [
+        "clean",
+        "noisy"
+      ],
+      "checkpoints_evaluated": [
+        0,
+        100,
+        200,
+        300,
+        400,
+        500,
+        600,
+        700,
+        800,
+        900,
+        1000,
+        1100,
+        1200,
+        1300,
+        1400,
+        1500
+      ],
+      "total_adaptation_images": 1500,
+      "total_updates": 1500,
+      "total_adaptation_time_seconds": 11.115250512000046,
+      "total_held_out_eval_time_by_view": {
+        "clean": 0.8678118630000995,
+        "noisy": 0.9121393679999414
+      },
+      "total_held_out_eval_time_seconds": 1.779951231000041,
+      "frozen_heads_preserved": true,
+      "features_adapted": true,
+      "all_invariants_passed": true
+    }
+  ],
+  "total_rows_written": 68,
+  "all_checks_passed": true
+}

@@ -39,6 +39,7 @@ held_out_evaluation:
     - "noisy"
 
 paths:
+  split_file: "data/ttt_exp_b_held_out_draft.json"
   shared_c20_membership: "data/shared_c20_membership.json"
   prior_exp_b_test_membership: "data/exp_b_test_membership.json"
   checkpoint_dir: "checkpoints"

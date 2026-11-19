@@ -1580,3 +1580,93 @@ class TestRegressionAndEdgeCases:
                 prior_test_membership=None,
                 device="cpu",
             )
+
+    def test_khoi_draft_split_and_held_out_plot(self, tmp_path: Path):
+        from results.generate_plot import generate_held_out_plot
+
+        draft_split = Path("data/ttt_exp_b_held_out_draft.json")
+        if not draft_split.is_file():
+            pytest.skip("data/ttt_exp_b_held_out_draft.json not present")
+
+        adapt_refs, held_out_refs, meta = load_exp_b_split_pair(draft_split)
+        assert len(adapt_refs) == 1500
+        assert len(held_out_refs) == 500
+        assert meta["adaptation_count"] == 1500
+        assert meta["held_out_count"] == 500
+        assert meta["held_out_examined_in_prior_exp_b"] is True
+        assert meta["held_out_prior_overlap_count"] == 500
+
+        csv_path = tmp_path / "held_out_plot_input.csv"
+        rows = [
+            {
+                "experiment": "B",
+                "condition": "supervised_frozen",
+                "seed": "42",
+                "source_checkpoint": "sup.pt",
+                "code_version": "test",
+                "adaptation_stream_condition": "none",
+                "held_out_condition": "clean",
+                "adaptation_images_processed": "0",
+                "held_out_image_count": "500",
+                "correct_prediction_count": "315",
+                "held_out_accuracy": "0.63",
+                "adaptation_update_count": "0",
+                "adaptation_time_seconds": "0.0",
+                "adaptation_interval_time_seconds": "0.0",
+                "held_out_eval_time_seconds": "0.1",
+                "cumulative_held_out_eval_time_seconds": "0.1",
+                "config_path": "cfg.yaml",
+                "split_locations": str(draft_split),
+                "hardware": "cpu",
+            },
+            {
+                "experiment": "B",
+                "condition": "joint_frozen",
+                "seed": "42",
+                "source_checkpoint": "jnt.pt",
+                "code_version": "test",
+                "adaptation_stream_condition": "none",
+                "held_out_condition": "noisy",
+                "adaptation_images_processed": "0",
+                "held_out_image_count": "500",
+                "correct_prediction_count": "173",
+                "held_out_accuracy": "0.346",
+                "adaptation_update_count": "0",
+                "adaptation_time_seconds": "0.0",
+                "adaptation_interval_time_seconds": "0.0",
+                "held_out_eval_time_seconds": "0.1",
+                "cumulative_held_out_eval_time_seconds": "0.1",
+                "config_path": "cfg.yaml",
+                "split_locations": str(draft_split),
+                "hardware": "cpu",
+            },
+            {
+                "experiment": "B",
+                "condition": "online_ttt",
+                "seed": "42",
+                "source_checkpoint": "jnt.pt",
+                "code_version": "test",
+                "adaptation_stream_condition": "noisy",
+                "held_out_condition": "noisy",
+                "adaptation_images_processed": "100",
+                "held_out_image_count": "500",
+                "correct_prediction_count": "190",
+                "held_out_accuracy": "0.38",
+                "adaptation_update_count": "100",
+                "adaptation_time_seconds": "0.8",
+                "adaptation_interval_time_seconds": "0.8",
+                "held_out_eval_time_seconds": "0.1",
+                "cumulative_held_out_eval_time_seconds": "0.2",
+                "config_path": "cfg.yaml",
+                "split_locations": str(draft_split),
+                "hardware": "cpu",
+            },
+        ]
+        with open(csv_path, "w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=HELD_OUT_CSV_COLUMNS)
+            writer.writeheader()
+            writer.writerows(rows)
+
+        out_png = tmp_path / "held_out_plot.png"
+        generate_held_out_plot(str(csv_path), str(out_png))
+        assert out_png.is_file() and out_png.stat().st_size > 0

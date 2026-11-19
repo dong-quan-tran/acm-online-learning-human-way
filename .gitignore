@@ -18,6 +18,7 @@ data/processed/
 checkpoints/*.pt
 checkpoints/*.pth
 results/*.csv
+!results/exp_b_held_out_*.csv
 results/figures/*.png
 
 # OS and editor files

@@ -219,5 +219,189 @@ def generate_stream_plot(
     print(f"Plot saved successfully to {out_p}")
 
 
+def generate_held_out_plot(
+    held_out_csv_path: str = "results/exp_b_held_out_seed42.csv",
+    output_png_path: str = "results/exp_b_held_out_accuracy_plot.png",
+) -> None:
+    """Plot periodic held-out accuracy trajectories directly from a held-out CSV."""
+    csv_path = Path(held_out_csv_path)
+    if not csv_path.exists():
+        raise FileNotFoundError(f"Missing {held_out_csv_path}")
+
+    with open(csv_path, "r", newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    if not rows:
+        raise ValueError(f"No rows found in {held_out_csv_path}")
+
+    required = {
+        "condition",
+        "seed",
+        "adaptation_stream_condition",
+        "held_out_condition",
+        "adaptation_images_processed",
+        "held_out_image_count",
+        "held_out_accuracy",
+    }
+    missing = required - set(rows[0].keys())
+    if missing:
+        raise ValueError(f"Held-out CSV missing required column(s): {sorted(missing)}")
+
+    by_view: dict[str, list[dict[str, str]]] = {"clean": [], "noisy": []}
+    for row in rows:
+        view = row["held_out_condition"]
+        if view in by_view:
+            by_view[view].append(row)
+
+    all_x = [int(r["adaptation_images_processed"]) for r in rows]
+    max_x = max(all_x) if all_x else 0
+    x_hi = max(max_x, 1)
+    all_y = [float(r["held_out_accuracy"]) * 100.0 for r in rows]
+    y_lo = max(0.0, math.floor((min(all_y) - 5.0) / 5.0) * 5.0)
+    y_hi = min(100.0, math.ceil((max(all_y) + 8.0) / 5.0) * 5.0)
+    if y_hi - y_lo < 10.0:
+        y_lo = max(0.0, y_lo - 5.0)
+        y_hi = min(100.0, y_hi + 5.0)
+
+    ho_counts = sorted({int(r["held_out_image_count"]) for r in rows})
+    count_label = f"{ho_counts[0]} Images" if len(ho_counts) == 1 else "Held-Out Images"
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6), sharey=True)
+    panel_specs = [
+        (ax1, "clean", f"Fixed Clean Held-Out Set ({count_label})"),
+        (ax2, "noisy", f"Fixed Gaussian-Noise Held-Out Set (\u03c3 = 0.08, {count_label})"),
+    ]
+    frozen_styles = {
+        "supervised_frozen": {
+            "label": "Supervised Frozen (Ref)",
+            "color": "#7f7f7f",
+            "linestyle": ":",
+            "linewidth": 1.8,
+        },
+        "joint_frozen": {
+            "label": "Joint Frozen (Ref)",
+            "color": "#1f77b4",
+            "linestyle": "--",
+            "linewidth": 2.0,
+        },
+    }
+    online_styles = {
+        "clean": {
+            "label": "Online TTT (Clean Stream)",
+            "color": "#ff7f0e",
+            "linestyle": "-",
+            "marker": "o",
+            "linewidth": 2.4,
+        },
+        "noisy": {
+            "label": "Online TTT (Noisy Stream)",
+            "color": "#2ca02c",
+            "linestyle": "-",
+            "marker": "D",
+            "linewidth": 2.6,
+        },
+    }
+
+    for ax, view_name, title in panel_specs:
+        view_rows = by_view[view_name]
+        for cond, style in frozen_styles.items():
+            matched = [r for r in view_rows if r["condition"] == cond]
+            if matched:
+                ref_y = float(matched[0]["held_out_accuracy"]) * 100.0
+                ax.plot(
+                    [0, x_hi],
+                    [ref_y, ref_y],
+                    label=f"{style['label']} ({ref_y:.1f}%)",
+                    color=style["color"],
+                    linestyle=style["linestyle"],
+                    linewidth=style["linewidth"],
+                    alpha=0.9,
+                )
+
+        for stream_cond, style in online_styles.items():
+            pts = sorted(
+                (
+                    r
+                    for r in view_rows
+                    if r["condition"] == "online_ttt"
+                    and r["adaptation_stream_condition"] == stream_cond
+                ),
+                key=lambda r: int(r["adaptation_images_processed"]),
+            )
+            if pts:
+                xs = [int(r["adaptation_images_processed"]) for r in pts]
+                ys = [float(r["held_out_accuracy"]) * 100.0 for r in pts]
+                ax.plot(
+                    xs,
+                    ys,
+                    label=style["label"],
+                    color=style["color"],
+                    linestyle=style["linestyle"],
+                    marker=style["marker"],
+                    linewidth=style["linewidth"],
+                    markersize=5.5,
+                    alpha=0.95,
+                )
+
+        ax.set_title(title, fontsize=13, fontweight="bold", pad=10)
+        ax.set_xlabel("Adaptation Images Processed", fontsize=11)
+        ax.set_xlim(0, x_hi)
+        ax.set_ylim(y_lo, y_hi)
+        ax.grid(True, linestyle="--", alpha=0.5)
+        ax.legend(loc="best", framealpha=0.95, fontsize=9.5)
+
+    ax1.set_ylabel("Held-Out Classification Accuracy (%)", fontsize=11)
+
+    noisy_view_rows = by_view["noisy"]
+    noisy_stream_pts = sorted(
+        (
+            r
+            for r in noisy_view_rows
+            if r["condition"] == "online_ttt"
+            and r["adaptation_stream_condition"] == "noisy"
+        ),
+        key=lambda r: int(r["adaptation_images_processed"]),
+    )
+    joint_noisy = [r for r in noisy_view_rows if r["condition"] == "joint_frozen"]
+    if noisy_stream_pts and joint_noisy:
+        jf_y = float(joint_noisy[0]["held_out_accuracy"]) * 100.0
+        peak_pt = max(noisy_stream_pts, key=lambda r: float(r["held_out_accuracy"]))
+        peak_x = float(peak_pt["adaptation_images_processed"])
+        peak_y = float(peak_pt["held_out_accuracy"]) * 100.0
+        delta_peak = peak_y - jf_y
+        y_span = max(y_hi - y_lo, 1.0)
+        text_x = max(x_hi * 0.08, min(x_hi * 0.58, peak_x - x_hi * 0.28))
+        text_y = (
+            min(y_hi - y_span * 0.12, peak_y + y_span * 0.12)
+            if peak_y + y_span * 0.16 <= y_hi
+            else max(y_lo + y_span * 0.10, peak_y - y_span * 0.18)
+        )
+        ax2.annotate(
+            f"Peak Noisy Stream: {peak_y:.1f}%\n({delta_peak:+.1f} pp vs. Joint Frozen)",
+            xy=(peak_x, peak_y),
+            xytext=(text_x, text_y),
+            arrowprops=dict(facecolor="#2ca02c", shrink=0.08, width=1.5, headwidth=8),
+            bbox=dict(boxstyle="round,pad=0.45", fc="#eafaf1", ec="#2ca02c", lw=1.5),
+            fontsize=9.5,
+            fontweight="bold",
+            color="#145a32",
+        )
+
+    seeds = sorted({int(r["seed"]) for r in rows})
+    seed_label = f"Seed {seeds[0]}" if len(seeds) == 1 else f"Seeds {', '.join(map(str, seeds))}"
+    fig.suptitle(
+        f"Experiment B: Fixed Held-Out Accuracy During Online TTT (CIFAR-100 Classes 0\u201319, {seed_label})",
+        fontsize=14.5,
+        fontweight="bold",
+        y=0.98,
+    )
+    plt.tight_layout()
+
+    out_p = Path(output_png_path)
+    out_p.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(out_p, dpi=300, bbox_inches="tight")
+    plt.close()
+    print(f"Held-out plot saved successfully to {out_p}")
+
+
 if __name__ == "__main__":
     generate_stream_plot()
