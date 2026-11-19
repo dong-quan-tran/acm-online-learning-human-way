@@ -1,0 +1,48 @@
+experiment: "B"
+dataset: "CIFAR-100-20"
+num_classes: 20
+num_outputs: 100
+num_groups: 16
+dropout: 0.2
+in_channels: 3
+mean: [0.5071, 0.4865, 0.4409]
+std: [0.2673, 0.2564, 0.2762]
+
+adaptation:
+  ttt_optimizer: "sgd"
+  ttt_momentum: 0.0
+  ttt_steps: 1
+  ttt_lr: 0.001
+  test_batch_size: 1
+  lambda_rot: 1.0
+
+corruption:
+  type: "gaussian_noise"
+  sigma: 0.08
+  severity: 3
+  noise_seed: 42
+  noise_space: "pixel_[0,1]_clamped"
+
+held_out_evaluation:
+  seed: 42
+  eval_interval: 100
+  eval_batch_size: 64
+  conditions:
+    - "supervised_frozen"
+    - "joint_frozen"
+    - "online_ttt"
+  adaptation_streams:
+    - "clean"
+    - "noisy"
+  held_out_views:
+    - "clean"
+    - "noisy"
+
+paths:
+  split_file: "data/ttt_exp_b_held_out_draft.json"
+  shared_c20_membership: "data/shared_c20_membership.json"
+  prior_exp_b_test_membership: "data/exp_b_test_membership.json"
+  checkpoint_dir: "checkpoints"
+  supervised_checkpoint: "checkpoints/exp_b_supervised_seed42.pt"
+  joint_checkpoint: "checkpoints/exp_b_joint_seed42.pt"
+  output_csv: "results/exp_b_held_out_pilot.csv"

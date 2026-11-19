@@ -1,0 +1,18 @@
+pilot PASS: 20 scores, 10000 predictions, checkpoints [0, 100, 200, 205]
+clean clean 0 0.652
+clean noisy 0 0.346
+clean clean 205 0.628
+clean noisy 205 0.336
+noisy clean 0 0.652
+noisy noisy 0 0.346
+noisy clean 205 0.608
+noisy noisy 205 0.41
+full PASS: 68 scores, 34000 predictions, checkpoints [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500]
+clean clean 0 0.652
+clean noisy 0 0.346
+clean clean 1500 0.634
+clean noisy 1500 0.316
+noisy clean 0 0.652
+noisy noisy 0 0.346
+noisy clean 1500 0.5
+noisy noisy 1500 0.478

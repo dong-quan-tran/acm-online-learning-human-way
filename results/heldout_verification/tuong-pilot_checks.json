@@ -1,0 +1,239 @@
+{
+  "experiment": "B",
+  "seed": 42,
+  "device": "cpu",
+  "code_version": "1df2e97",
+  "config_path": "configs/ttt_cifar100_exp_b_held_out.yaml",
+  "split_locations": "data/ttt_exp_b_held_out_draft.json",
+  "output_csv": "results\\pilot.csv",
+  "output_checks": "results\\pilot_checks.json",
+  "output_predictions": "results\\pilot_predictions.csv",
+  "timing_semantics": {
+    "adaptation_time_seconds": "Cumulative pure adaptation compute wall time since stream start for this condition (excluding DataLoader/noise fetch overhead); identical across clean/noisy held-out rows at the same checkpoint (do not sum across rows).",
+    "adaptation_interval_time_seconds": "Pure adaptation compute wall time since the previous checkpoint for this stream.",
+    "held_out_eval_time_seconds": "Wall time for this individual held-out evaluation pass (per view, per checkpoint) after one-time GPU kernel warmup.",
+    "cumulative_held_out_eval_time_seconds": "Cumulative held-out evaluation wall time across checkpoints for this held_out_condition view."
+  },
+  "settings": {
+    "conditions": [
+      "supervised_frozen",
+      "joint_frozen",
+      "online_ttt"
+    ],
+    "adaptation_streams": [
+      "clean",
+      "noisy"
+    ],
+    "held_out_views": [
+      "clean",
+      "noisy"
+    ],
+    "ttt_optimizer": "sgd",
+    "eval_interval": 100,
+    "eval_batch_size": 64,
+    "ttt_lr": 0.001,
+    "ttt_steps": 1,
+    "ttt_momentum": 0.0,
+    "lambda_rot": 1.0,
+    "noise_sigma": 0.08,
+    "noise_seed": 42,
+    "max_adapt_images": 205,
+    "verify_invariants": true,
+    "deterministic": true
+  },
+  "split_checks": {
+    "adaptation_count": 1500,
+    "held_out_count": 500,
+    "adaptation_key": "adaptation_ids",
+    "held_out_key": "held_out_ids",
+    "adaptation_metadata": {
+      "status": "draft",
+      "split_seed": 42,
+      "interval": 100,
+      "prior_evaluation_reuse": true,
+      "dataset": "CIFAR-100 classes 0-19",
+      "corruption": "gaussian_noise",
+      "noise_sigma": 0.08,
+      "noise_seed": 42,
+      "preprocessing": "RGB CHW ToTensor; noise in [0,1] before model normalization",
+      "resolved_key": "adaptation_ids"
+    },
+    "held_out_metadata": {
+      "status": "draft",
+      "split_seed": 42,
+      "interval": 100,
+      "prior_evaluation_reuse": true,
+      "dataset": "CIFAR-100 classes 0-19",
+      "corruption": "gaussian_noise",
+      "noise_sigma": 0.08,
+      "noise_seed": 42,
+      "preprocessing": "RGB CHW ToTensor; noise in [0,1] before model normalization",
+      "resolved_key": "held_out_ids"
+    },
+    "embedded_source_lists_verified": true,
+    "held_out_examined_in_prior_exp_b": true,
+    "held_out_prior_overlap_count": 500,
+    "adaptation_prior_overlap_count": 1500,
+    "adaptation_count_effective": 205,
+    "split_metadata_matches_settings": true
+  },
+  "runs": [
+    {
+      "condition": "supervised_frozen",
+      "adaptation_stream_condition": "none",
+      "held_out_views": [
+        "clean",
+        "noisy"
+      ],
+      "checkpoints_evaluated": [
+        0
+      ],
+      "total_adaptation_images": 0,
+      "total_updates": 0,
+      "total_adaptation_time_seconds": 0.0,
+      "total_held_out_eval_time_by_view": {
+        "clean": 2.448273300018627,
+        "noisy": 2.2426459999987856
+      },
+      "total_held_out_eval_time_seconds": 4.690919300017413,
+      "held_out_ids_sha256_by_view": {
+        "clean": "54c1eeb69ab12a0fe388a8647c7f4409ffeb59e34dbfd9de34abf33f54e34837",
+        "noisy": "54c1eeb69ab12a0fe388a8647c7f4409ffeb59e34dbfd9de34abf33f54e34837"
+      },
+      "predictions_sha256_by_view": {
+        "clean": {
+          "0": "5e1365eb8bf92dd103b53f9119257b6e70e07a7ba9fda588509521e461397579"
+        },
+        "noisy": {
+          "0": "e110adf1aa3d7641c4560f2e58bebc86c276b4952a9479f441b357aa87c22e31"
+        }
+      },
+      "invariants_checked": true,
+      "all_invariants_passed": true
+    },
+    {
+      "condition": "joint_frozen",
+      "adaptation_stream_condition": "none",
+      "held_out_views": [
+        "clean",
+        "noisy"
+      ],
+      "checkpoints_evaluated": [
+        0
+      ],
+      "total_adaptation_images": 0,
+      "total_updates": 0,
+      "total_adaptation_time_seconds": 0.0,
+      "total_held_out_eval_time_by_view": {
+        "clean": 2.2129581999615766,
+        "noisy": 2.341352100018412
+      },
+      "total_held_out_eval_time_seconds": 4.5543102999799885,
+      "held_out_ids_sha256_by_view": {
+        "clean": "54c1eeb69ab12a0fe388a8647c7f4409ffeb59e34dbfd9de34abf33f54e34837",
+        "noisy": "54c1eeb69ab12a0fe388a8647c7f4409ffeb59e34dbfd9de34abf33f54e34837"
+      },
+      "predictions_sha256_by_view": {
+        "clean": {
+          "0": "c4f60596131c47294b866e1c6ddf4bfe189253d08a56eb3d4209189a0e0219d2"
+        },
+        "noisy": {
+          "0": "efdb1ee9ad41235eda96e9d9d54e8f45f641dc4e7176e48fef1115a092bd067f"
+        }
+      },
+      "invariants_checked": true,
+      "all_invariants_passed": true
+    },
+    {
+      "condition": "online_ttt",
+      "adaptation_stream_condition": "clean",
+      "held_out_views": [
+        "clean",
+        "noisy"
+      ],
+      "checkpoints_evaluated": [
+        0,
+        100,
+        200,
+        205
+      ],
+      "total_adaptation_images": 205,
+      "total_updates": 205,
+      "total_adaptation_time_seconds": 11.499084899958689,
+      "total_held_out_eval_time_by_view": {
+        "clean": 8.896318100043572,
+        "noisy": 9.766662899928633
+      },
+      "total_held_out_eval_time_seconds": 18.662980999972206,
+      "held_out_ids_sha256_by_view": {
+        "clean": "54c1eeb69ab12a0fe388a8647c7f4409ffeb59e34dbfd9de34abf33f54e34837",
+        "noisy": "54c1eeb69ab12a0fe388a8647c7f4409ffeb59e34dbfd9de34abf33f54e34837"
+      },
+      "predictions_sha256_by_view": {
+        "clean": {
+          "0": "c4f60596131c47294b866e1c6ddf4bfe189253d08a56eb3d4209189a0e0219d2",
+          "100": "c3d576d0b0ec8337e542a1cea91890ba3c7abdbeaeb9cc3da260eb6d42bb0dcf",
+          "200": "9c9cab8ace4c2ac60e1c7bd8d23e15d32c8f08be4aac832e13ebe11d8b58aca3",
+          "205": "c79e0c13c8a114d12bbb5e19af4f7966b47d90fa17c6f85f62160a2ed0e58237"
+        },
+        "noisy": {
+          "0": "efdb1ee9ad41235eda96e9d9d54e8f45f641dc4e7176e48fef1115a092bd067f",
+          "100": "95fe9949910698d922f4951430460c42d3a72e8921949a3e389fd5832a78991c",
+          "200": "89c8cab51b8f9534616ca6716a9f858342c65b126fe6d60a52c942b5d22fad8c",
+          "205": "17d0e23fa6adbc7fa01f56d684318246dca36be5ab13cfed9405b38f2d1fd169"
+        }
+      },
+      "invariants_checked": true,
+      "frozen_heads_preserved": true,
+      "features_adapted": true,
+      "all_invariants_passed": true
+    },
+    {
+      "condition": "online_ttt",
+      "adaptation_stream_condition": "noisy",
+      "held_out_views": [
+        "clean",
+        "noisy"
+      ],
+      "checkpoints_evaluated": [
+        0,
+        100,
+        200,
+        205
+      ],
+      "total_adaptation_images": 205,
+      "total_updates": 205,
+      "total_adaptation_time_seconds": 10.843239199894015,
+      "total_held_out_eval_time_by_view": {
+        "clean": 9.366833700041752,
+        "noisy": 8.85412269999506
+      },
+      "total_held_out_eval_time_seconds": 18.220956400036812,
+      "held_out_ids_sha256_by_view": {
+        "clean": "54c1eeb69ab12a0fe388a8647c7f4409ffeb59e34dbfd9de34abf33f54e34837",
+        "noisy": "54c1eeb69ab12a0fe388a8647c7f4409ffeb59e34dbfd9de34abf33f54e34837"
+      },
+      "predictions_sha256_by_view": {
+        "clean": {
+          "0": "c4f60596131c47294b866e1c6ddf4bfe189253d08a56eb3d4209189a0e0219d2",
+          "100": "c66672a7a29c021dd4cb35d9caa7fa27dce42277556fb8675bf4bd8899499e14",
+          "200": "fe465dfc021b793f1cbc11f8285005ac99af20e9626225440c82ea31e202a0a6",
+          "205": "6b73768ce0458d300f8cee2d15a2d90bbb565f55ea84ca362197e30e0725c417"
+        },
+        "noisy": {
+          "0": "efdb1ee9ad41235eda96e9d9d54e8f45f641dc4e7176e48fef1115a092bd067f",
+          "100": "da0e20a2fc1ed922628c1654a866011157c85177e5d62a0634e88b9ff3db65c4",
+          "200": "7f83613e6899904d9e87ac647edad8f85df4b2d3331a380b6313802812134dc8",
+          "205": "7ae8c079cbaf57d715ed3c442cc2e5835ee4300aceffd6a9c36cbb0d67f25560"
+        }
+      },
+      "invariants_checked": true,
+      "frozen_heads_preserved": true,
+      "features_adapted": true,
+      "all_invariants_passed": true
+    }
+  ],
+  "total_rows_written": 20,
+  "total_predictions_written": 10000,
+  "all_checks_passed": true
+}

@@ -1,0 +1,311 @@
+{
+  "experiment": "B",
+  "seed": 42,
+  "device": "cpu",
+  "code_version": "1df2e97",
+  "config_path": "configs/ttt_cifar100_exp_b_held_out.yaml",
+  "split_locations": "data/ttt_exp_b_held_out_draft.json",
+  "output_csv": "results\\full.csv",
+  "output_checks": "results\\full_checks.json",
+  "output_predictions": "results\\full_predictions.csv",
+  "timing_semantics": {
+    "adaptation_time_seconds": "Cumulative pure adaptation compute wall time since stream start for this condition (excluding DataLoader/noise fetch overhead); identical across clean/noisy held-out rows at the same checkpoint (do not sum across rows).",
+    "adaptation_interval_time_seconds": "Pure adaptation compute wall time since the previous checkpoint for this stream.",
+    "held_out_eval_time_seconds": "Wall time for this individual held-out evaluation pass (per view, per checkpoint) after one-time GPU kernel warmup.",
+    "cumulative_held_out_eval_time_seconds": "Cumulative held-out evaluation wall time across checkpoints for this held_out_condition view."
+  },
+  "settings": {
+    "conditions": [
+      "supervised_frozen",
+      "joint_frozen",
+      "online_ttt"
+    ],
+    "adaptation_streams": [
+      "clean",
+      "noisy"
+    ],
+    "held_out_views": [
+      "clean",
+      "noisy"
+    ],
+    "ttt_optimizer": "sgd",
+    "eval_interval": 100,
+    "eval_batch_size": 64,
+    "ttt_lr": 0.001,
+    "ttt_steps": 1,
+    "ttt_momentum": 0.0,
+    "lambda_rot": 1.0,
+    "noise_sigma": 0.08,
+    "noise_seed": 42,
+    "max_adapt_images": 1500,
+    "verify_invariants": true,
+    "deterministic": true
+  },
+  "split_checks": {
+    "adaptation_count": 1500,
+    "held_out_count": 500,
+    "adaptation_key": "adaptation_ids",
+    "held_out_key": "held_out_ids",
+    "adaptation_metadata": {
+      "status": "draft",
+      "split_seed": 42,
+      "interval": 100,
+      "prior_evaluation_reuse": true,
+      "dataset": "CIFAR-100 classes 0-19",
+      "corruption": "gaussian_noise",
+      "noise_sigma": 0.08,
+      "noise_seed": 42,
+      "preprocessing": "RGB CHW ToTensor; noise in [0,1] before model normalization",
+      "resolved_key": "adaptation_ids"
+    },
+    "held_out_metadata": {
+      "status": "draft",
+      "split_seed": 42,
+      "interval": 100,
+      "prior_evaluation_reuse": true,
+      "dataset": "CIFAR-100 classes 0-19",
+      "corruption": "gaussian_noise",
+      "noise_sigma": 0.08,
+      "noise_seed": 42,
+      "preprocessing": "RGB CHW ToTensor; noise in [0,1] before model normalization",
+      "resolved_key": "held_out_ids"
+    },
+    "embedded_source_lists_verified": true,
+    "held_out_examined_in_prior_exp_b": true,
+    "held_out_prior_overlap_count": 500,
+    "adaptation_prior_overlap_count": 1500,
+    "adaptation_count_effective": 1500,
+    "split_metadata_matches_settings": true
+  },
+  "runs": [
+    {
+      "condition": "supervised_frozen",
+      "adaptation_stream_condition": "none",
+      "held_out_views": [
+        "clean",
+        "noisy"
+      ],
+      "checkpoints_evaluated": [
+        0
+      ],
+      "total_adaptation_images": 0,
+      "total_updates": 0,
+      "total_adaptation_time_seconds": 0.0,
+      "total_held_out_eval_time_by_view": {
+        "clean": 2.697473699983675,
+        "noisy": 2.531619999965187
+      },
+      "total_held_out_eval_time_seconds": 5.229093699948862,
+      "held_out_ids_sha256_by_view": {
+        "clean": "54c1eeb69ab12a0fe388a8647c7f4409ffeb59e34dbfd9de34abf33f54e34837",
+        "noisy": "54c1eeb69ab12a0fe388a8647c7f4409ffeb59e34dbfd9de34abf33f54e34837"
+      },
+      "predictions_sha256_by_view": {
+        "clean": {
+          "0": "5e1365eb8bf92dd103b53f9119257b6e70e07a7ba9fda588509521e461397579"
+        },
+        "noisy": {
+          "0": "e110adf1aa3d7641c4560f2e58bebc86c276b4952a9479f441b357aa87c22e31"
+        }
+      },
+      "invariants_checked": true,
+      "all_invariants_passed": true
+    },
+    {
+      "condition": "joint_frozen",
+      "adaptation_stream_condition": "none",
+      "held_out_views": [
+        "clean",
+        "noisy"
+      ],
+      "checkpoints_evaluated": [
+        0
+      ],
+      "total_adaptation_images": 0,
+      "total_updates": 0,
+      "total_adaptation_time_seconds": 0.0,
+      "total_held_out_eval_time_by_view": {
+        "clean": 2.2906009000143968,
+        "noisy": 2.310112100036349
+      },
+      "total_held_out_eval_time_seconds": 4.600713000050746,
+      "held_out_ids_sha256_by_view": {
+        "clean": "54c1eeb69ab12a0fe388a8647c7f4409ffeb59e34dbfd9de34abf33f54e34837",
+        "noisy": "54c1eeb69ab12a0fe388a8647c7f4409ffeb59e34dbfd9de34abf33f54e34837"
+      },
+      "predictions_sha256_by_view": {
+        "clean": {
+          "0": "c4f60596131c47294b866e1c6ddf4bfe189253d08a56eb3d4209189a0e0219d2"
+        },
+        "noisy": {
+          "0": "efdb1ee9ad41235eda96e9d9d54e8f45f641dc4e7176e48fef1115a092bd067f"
+        }
+      },
+      "invariants_checked": true,
+      "all_invariants_passed": true
+    },
+    {
+      "condition": "online_ttt",
+      "adaptation_stream_condition": "clean",
+      "held_out_views": [
+        "clean",
+        "noisy"
+      ],
+      "checkpoints_evaluated": [
+        0,
+        100,
+        200,
+        300,
+        400,
+        500,
+        600,
+        700,
+        800,
+        900,
+        1000,
+        1100,
+        1200,
+        1300,
+        1400,
+        1500
+      ],
+      "total_adaptation_images": 1500,
+      "total_updates": 1500,
+      "total_adaptation_time_seconds": 73.195603799948,
+      "total_held_out_eval_time_by_view": {
+        "clean": 33.45648579992121,
+        "noisy": 33.16765449999366
+      },
+      "total_held_out_eval_time_seconds": 66.62414029991487,
+      "held_out_ids_sha256_by_view": {
+        "clean": "54c1eeb69ab12a0fe388a8647c7f4409ffeb59e34dbfd9de34abf33f54e34837",
+        "noisy": "54c1eeb69ab12a0fe388a8647c7f4409ffeb59e34dbfd9de34abf33f54e34837"
+      },
+      "predictions_sha256_by_view": {
+        "clean": {
+          "0": "c4f60596131c47294b866e1c6ddf4bfe189253d08a56eb3d4209189a0e0219d2",
+          "100": "c3d576d0b0ec8337e542a1cea91890ba3c7abdbeaeb9cc3da260eb6d42bb0dcf",
+          "200": "9c9cab8ace4c2ac60e1c7bd8d23e15d32c8f08be4aac832e13ebe11d8b58aca3",
+          "300": "142da2c5e620b78fdba3760c79865eba0f4eecc162b877b7aecd002eca1f7663",
+          "400": "abe6942f1b2acb8f616fa6045f7a3f6ede00ec3cc081038a91f17f4f1fc7d270",
+          "500": "3a594363126ffacbc4599f3530e6dc22dee867bc7b658f3f442ba40503d1671b",
+          "600": "6c2ef3c86a0c7b0d6eebbe7f378b5571e2dca5cac1418538fb9d6a05c099c422",
+          "700": "873e7d06a81cd5a54166a544eba6e2c5c547c8c98def007cd78dee100b6b2ba6",
+          "800": "9169b1662e6af0a54d5dcef3db23b3949e9bfc5dd8466198452f0f569b9d6f1e",
+          "900": "ac59669c2b5d8a77ac481ad8d9279cb558d2f1ac42e4448f33b9bbcf9f91d610",
+          "1000": "1362aa1828e02c7a7693d3254bfa19ab45ad3ad2e2ff12e7032712bd0bb1bbc5",
+          "1100": "442e3c7ce6211c39f5bb5dd3ad4685eed89a27547993e187add09960f8421976",
+          "1200": "cc1d51967eccf016b54f97677a82577cf05a430c8b24a9f67ba2d6b4b8700bde",
+          "1300": "1da841f1efc4af6afc44234a83746ec672c7285b5bd8f946217945b3152bd59d",
+          "1400": "29d5f9518d045f95284a5adfa05a678cf5ed8912672a1e7d2ee0dea8238553c5",
+          "1500": "504cb0cf3fe420d7216739c174d7e2e7b4cb961ccd42f0e7e7656d6659f17431"
+        },
+        "noisy": {
+          "0": "efdb1ee9ad41235eda96e9d9d54e8f45f641dc4e7176e48fef1115a092bd067f",
+          "100": "95fe9949910698d922f4951430460c42d3a72e8921949a3e389fd5832a78991c",
+          "200": "89c8cab51b8f9534616ca6716a9f858342c65b126fe6d60a52c942b5d22fad8c",
+          "300": "ec3e3307bb7ee8012b7d32617e5c779487b26ba4ad2c86cbf82cad66887e0bf8",
+          "400": "ab7f8f71c5c0e870b46d3cc85a46e05188436a5cb45683da56fa45b12942d800",
+          "500": "225bcd7929d3ac1cfc056811680f3503d7a908eb1a13b42a7ab951848a7a0710",
+          "600": "cb3d843041e76ad4ab417a40115a758d42cfa59fa1399f7a6f9cb2ebcc77ef2c",
+          "700": "9a26a1b41dd06f73aa922f252461a591dd75dd6df4701eafc268a3227a2f5292",
+          "800": "c43a0f1e6a20a292e8f7bdc3caceaaab43129c51b64b071874eecdaabc8dbb88",
+          "900": "56ef9792d7db96f685b7f87faa9c645ddfe1d5f7d83bd7139f88d53137c2d445",
+          "1000": "5eb8c6f4516c60c82c79a3f73e0704ddf8a98e51463115513dbe03cdd7124b40",
+          "1100": "059a4774f72ca96c436afbfdc38214d0fe5e3c1857e1dfe189895e546352248b",
+          "1200": "32480ad763c256cc531c1d980fffec3df196c8c5c5d488b2717d74725a49ebbd",
+          "1300": "93050fd33686adf4ffe6970b6f7b1fa19086a4b9ae24b1408a4fcc2364ed6aaf",
+          "1400": "14abc928c1a8731e5f9900cff3b1131df4d21de88ec47559621b524d72b41b93",
+          "1500": "e98fbec89b3123d4e38679d0009a093fc732747421668c64111510e15c4a9194"
+        }
+      },
+      "invariants_checked": true,
+      "frozen_heads_preserved": true,
+      "features_adapted": true,
+      "all_invariants_passed": true
+    },
+    {
+      "condition": "online_ttt",
+      "adaptation_stream_condition": "noisy",
+      "held_out_views": [
+        "clean",
+        "noisy"
+      ],
+      "checkpoints_evaluated": [
+        0,
+        100,
+        200,
+        300,
+        400,
+        500,
+        600,
+        700,
+        800,
+        900,
+        1000,
+        1100,
+        1200,
+        1300,
+        1400,
+        1500
+      ],
+      "total_adaptation_images": 1500,
+      "total_updates": 1500,
+      "total_adaptation_time_seconds": 73.20397690008394,
+      "total_held_out_eval_time_by_view": {
+        "clean": 34.660025399993174,
+        "noisy": 33.79949390026741
+      },
+      "total_held_out_eval_time_seconds": 68.45951930026058,
+      "held_out_ids_sha256_by_view": {
+        "clean": "54c1eeb69ab12a0fe388a8647c7f4409ffeb59e34dbfd9de34abf33f54e34837",
+        "noisy": "54c1eeb69ab12a0fe388a8647c7f4409ffeb59e34dbfd9de34abf33f54e34837"
+      },
+      "predictions_sha256_by_view": {
+        "clean": {
+          "0": "c4f60596131c47294b866e1c6ddf4bfe189253d08a56eb3d4209189a0e0219d2",
+          "100": "c66672a7a29c021dd4cb35d9caa7fa27dce42277556fb8675bf4bd8899499e14",
+          "200": "fe465dfc021b793f1cbc11f8285005ac99af20e9626225440c82ea31e202a0a6",
+          "300": "7d45a350e8298033535466bad5bd316b296a472f4895951340c4b8c10f3c14fa",
+          "400": "225c374f74f407fc90df229696f4237f46f0c47c4f2faa64872c60a65ab2e95d",
+          "500": "52623539492d38ad9d17a092d06ef4b8c5290420b7fff95be65b08edbd749898",
+          "600": "708499fc8d16f0216c55480ef52cc035f12db183bf55b574a529f49e206270d3",
+          "700": "a2285da70222311a3738815eb5600a6eabe4c098e064d54c7601f13f943962bc",
+          "800": "38e76f27242a9f2cf95a14b23ebe5034807bce6aa04468f6ec28517e387bb3f1",
+          "900": "db9c962b26d9353f4020a4f6207a4bc9f51f4897f90d44d7fe6ed8dfad60a341",
+          "1000": "67fa998f3fbf6311fc30e6382ef825a623452cca8fbbcc932a905d343d61e74a",
+          "1100": "1cc2a910d6ea8feeadc175ae2815854a266e742cfefa48988b68fd8cbd78807f",
+          "1200": "b98604a784482a4057482f866047f623b0cc779c48aeb728066d271fc678c3f8",
+          "1300": "2b5aef0252fef785415a4cba30a3aeb8f27b3487e2fba466f28f4018e6e7c241",
+          "1400": "6a64657614976fda304de3d85fcda46ebe29bbf3b5f5190fa6675d1af10dbfbb",
+          "1500": "56ada5475a32c82364e0580bedb435e1694c5eea7d24c5376612a15413591a06"
+        },
+        "noisy": {
+          "0": "efdb1ee9ad41235eda96e9d9d54e8f45f641dc4e7176e48fef1115a092bd067f",
+          "100": "da0e20a2fc1ed922628c1654a866011157c85177e5d62a0634e88b9ff3db65c4",
+          "200": "7f83613e6899904d9e87ac647edad8f85df4b2d3331a380b6313802812134dc8",
+          "300": "97ab3280f226e17c7650c476ccfc7c73784fbf4992b48c210735d97a4eedef4e",
+          "400": "0d21b37d07750d836042421e59d5394d38097b9b7e5de025ce2d3d5126b140b3",
+          "500": "43e7b1e0199bce69cfb2651ae68e2a2ba7bae9522bb6be027f475a5cc4f97d6d",
+          "600": "cac034d613a3bdd80099b0be897f85bff19ee3c34c6894244120c7a11f03fb1c",
+          "700": "1c00c6f455fbc120f656d23b2a6ce3bd6163c2f5713386beb88ef0a3bf1c0362",
+          "800": "422ae667348bb68e0851e8db0f9fea4e39dee2612c14358e167b3839b328b811",
+          "900": "091f86dfd17733de7775bc150c57400d7decb41020eadec0b12bc5c8cc1d55a2",
+          "1000": "c442a09c2363b1ca74af4ef6039049983cb742e02764fa0df42744f1a1f288a9",
+          "1100": "596c5a1a28db7d1d366d2c10321674f6ed05746b7a127fc94ba4ccd453cd4c77",
+          "1200": "40fc0cf1a172c90dbc50072e09a1559f46d04ec834e482e6e2660609356e25bb",
+          "1300": "888e6b5fbb79f20a790a5939f69d50329e9bf949eac72d49cc59b22d116072f3",
+          "1400": "38511b46f739b57cc7822ad6860e0d42dab784c448a5d3e6b24d3ab2d7a81ff1",
+          "1500": "e8b240a42328ac3605f561b1036425a5c7ca73da2d020614171e3f340d1e1c77"
+        }
+      },
+      "invariants_checked": true,
+      "frozen_heads_preserved": true,
+      "features_adapted": true,
+      "all_invariants_passed": true
+    }
+  ],
+  "total_rows_written": 68,
+  "total_predictions_written": 34000,
+  "all_checks_passed": true
+}

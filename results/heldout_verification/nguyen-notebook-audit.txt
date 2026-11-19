@@ -1,0 +1,22 @@
+Saved GitHub notebook 64ae8d1 SHA256 6e4566660dbde09355aa1b29c0125086cae41b683f274a8fe090f92994b421c3
+Kaggle version 2: all 12 code cells match GitHub
+PASS target membership: 45,000 source train, 5,000 source dev, 8,000 adaptation, 2,000 quiz; zero duplicate source IDs
+FAIL independence: 2,000/2,000 quiz IDs match the earlier online tuning pool
+Earlier tuned settings saved by the notebook:
+chosen TTT settings: {'episodic_lr': 0.01, 'episodic_steps': 10, 'online_lr': 0.003, 'online_steps': 1, 'source': 'ttt_dev tuning on gaussian_noise-5'}
+Latest fixed settings: {"corruption": "gaussian_noise", "dev_limit": null, "episodic_lr": 0.001, "episodic_steps": 10, "eval_limit": null, "gn_groups": 8, "monitor_every": 100, "online_lr": 0.001, "online_steps": 1, "online_update_images": 1, "quick": false, "seed": 0, "severity": 5, "source_dev_size": 5000, "ttt_augment": true, "ttt_batch": 32, "ttt_dev_size": 2000, "ttt_momentum": 0.0}
+Saved source training log (final epoch):
+[supervised] ep 30/30  loss_cls 0.091  loss_rot 0.000  train_acc 0.9710  dev_acc 0.9092  dev_rot 0.2501  15s
+[joint] ep 30/30  loss_cls 0.071  loss_rot 0.243  train_acc 0.9777  dev_acc 0.9204  dev_rot 0.8994  27s
+Reported trained monitor excerpt (not an independent replay):
+stream           clean                  gaussian_noise-5
+heldout_set      clean gaussian_noise-5            clean gaussian_noise-5
+images_adapted
+0               0.9115            0.408           0.9115           0.4080
+4000            0.9115            0.385           0.8195           0.7635
+8000            0.9140            0.418           0.7910           0.7535
+Reported noisy adaptation-stream score (separate from the fixed monitor):
+7  0.724500      0.714604       0.734181               0.316250
+UNVERIFIED trained schedule at every point, per-ID score logs, and state continuity: raw run artifacts unavailable
+FIXTURE PASS clean: 81 checkpoints, 162 scores, 324000 ordered held-out predictions, one optimizer and 8,000 updates; state and RNG unchanged during scoring
+FIXTURE PASS noisy: 81 checkpoints, 162 scores, 324000 ordered held-out predictions, one optimizer and 8,000 updates; state and RNG unchanged during scoring
