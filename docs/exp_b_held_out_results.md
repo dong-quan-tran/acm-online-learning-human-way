@@ -2,10 +2,10 @@
 
 **Author**: Tuong (Lead, Experiment B)  
 **Date**: November 18, 2026  
-**Code Revision**: `010226f` (branch `tuong/exp-b-revised`)  
+**Code Revision**: Runner `010226f` (Colab T4 CSVs); split/config/artifacts and post-audit determinism/audit fixes on branch `tuong/exp-b-revised`  
 **Hardware**: Google Colab **Tesla T4** GPU (`cuda`, PyTorch `2.14.1+cu130`, CUDA `13.0`)  
 **Configuration**: `configs/ttt_cifar100_exp_b_held_out.yaml`  
-**Split File**: `data/ttt_exp_b_held_out_draft.json` (prepared by Khoi on `origin/khoi/ttt-evaluation` @ `c71dd5f`)
+**Split File**: `data/ttt_exp_b_held_out_draft.json` (prepared by Khoi on `origin/khoi/ttt-evaluation` @ `c71dd5f`; `1,500 / 500` split sizes confirmed and finalized with Khoi)
 
 **Deliverable Artifacts**:
 - **200-image pilot CSV & audit**: `results/exp_b_held_out_pilot.csv`, `results/exp_b_held_out_pilot_checks.json` (`16` rows, checkpoints `[0, 100, 200]`)
@@ -20,11 +20,11 @@
 Evaluating the current adapted model at fixed `100`-image intervals on the **same fixed 500-image held-out test set** (`0` through `1,500` adaptation images) isolates how continuous rotation-based TTT changes generalization on both clean and corrupted distributions without changing the evaluation samples:
 
 1. **Noisy Adaptation Stream (`online_ttt`, `stream=noisy`)**:
-   - **On the fixed noisy held-out set ($\sigma=0.08$)**: Held-out accuracy starts at **`34.60%`** (`173/500`, matching `joint_frozen`), climbs monotonically through early adaptation (`38.00%` at `100`, `42.40%` at `200`, `47.00%` at `300`), exceeds `51%` by `700` images, **peaks at `53.00%` (`265/500`, `+18.40 pp` vs. `joint_frozen` and `+14.60 pp` vs. `supervised_frozen`) at `1,400` adaptation images**, and finishes at **`47.40%` (`237/500`, `+12.80 pp` vs. `joint_frozen`)** at `1,500` images.
+   - **On the fixed noisy held-out set ($\sigma=0.08$)**: Held-out accuracy starts at **`34.60%`** (`173/500`, matching `joint_frozen`), climbs monotonically through early adaptation (`38.00%` at `100`, `42.40%` at `200`, `47.00%` at `300`), reaches `51.00%` at `700` images (`51.40%` at `800`), **peaks at `53.00%` (`265/500`, `+18.40 pp` vs. `joint_frozen` and `+14.60 pp` vs. `supervised_frozen`) at `1,400` adaptation images**, and finishes at **`47.40%` (`237/500`, `+12.80 pp` vs. `joint_frozen`)** at `1,500` images.
    - **Cross-domain trade-off on the fixed clean held-out set**: As shared features adapt continuously to Gaussian-noise images, clean held-out accuracy decreases from **`65.20%`** (`n=0`) to **`50.20%`** (`n=1500`, `-15.00 pp` vs. `joint_frozen`). Adaptation improves corrupted performance at the expense of clean-image retention when the stream stays corrupted.
 
 2. **Clean Adaptation Stream (`online_ttt`, `stream=clean`)**:
-   - **On the fixed clean held-out set**: Accuracy initially dips from **`65.20%`** (`n=0`) to `59.60%–62.20%` (`100–700`), rebounds to `63.00%` (`800`), and stabilizes at **`63.40%` (`317/500`, `-1.80 pp` vs. `joint_frozen`, `+0.40 pp` above `supervised_frozen`)** at `1,400` and `1,500` images.
+   - **On the fixed clean held-out set**: Accuracy initially dips from **`65.20%`** (`n=0`) to `59.60%–62.20%` (`100–700`), rebounds to `63.00%` (`800`), fluctuates between `60.20%` and `61.40%` (`900–1,300`), and finishes at **`63.40%` (`317/500`, `-1.80 pp` vs. `joint_frozen`, `+0.40 pp` above `supervised_frozen`)** at `1,400` and `1,500` images.
    - **On the fixed noisy held-out set**: Without seeing corrupted images during adaptation, noisy held-out accuracy stays near the `joint_frozen` baseline (`34.60%` at `n=0`, fluctuating between `28.40%` and `38.80%`, ending at `32.60%` at `n=1500`).
 
 3. **Frozen Reference Baselines**:
@@ -80,8 +80,10 @@ python3 -m src.ttt_cifar100 --held-out \
   --device cuda --overwrite
 
 # 5. Rebuild held-out accuracy plot directly from CSV
-.venv/bin/python -c "from results.generate_plot import generate_held_out_plot; generate_held_out_plot()"
+.venv/bin/python results/generate_plot.py --held-out
 ```
+
+*(Note: Command #1 requires the branch commit containing `paths.split_file` in `configs/ttt_cifar100_exp_b_held_out.yaml` and `data/ttt_exp_b_held_out_draft.json`; on older revision `010226f`, pass `--split-file data/ttt_exp_b_held_out_draft.json` explicitly. On updated `src/ttt_held_out.py`, deterministic cuDNN mode and one-time GPU warmup are enabled by default, and `--save-predictions <path>` optionally exports ordered per-image prediction evidence.)*
 
 ---
 
@@ -96,7 +98,7 @@ Both the 200-image pilot (`results/exp_b_held_out_pilot.csv`) and the 205-image 
 | `online_ttt` | `clean` | `0 → 100 → 200 → 205` | `65.2 → 60.2 → 62.0 → 62.8%` vs. `65.2 → 60.2 → 62.4 → 62.8%` | `34.6 → 28.4 → 33.6 → 33.2%` vs. `34.6 → 28.4 → 34.0 → 33.6%` | `1.363s` vs. `8.941s` |
 | `online_ttt` | `noisy` | `0 → 100 → 200 → 205` | `65.2 → 64.8 → 63.2 → 60.8%` vs. `65.2 → 64.8 → 63.2 → 60.8%` | `34.6 → 38.0 → 42.4 → 41.0%` vs. `34.6 → 38.0 → 42.4 → 41.0%` | `1.386s` vs. `8.594s` |
 
-The noisy adaptation stream matches Khoi's CPU accuracy **bit-for-bit across every checkpoint and held-out view**, and Colab T4 runs ~`6.2–6.6×` faster on adaptation and ~`34×` faster on held-out evaluation (`~0.055s` vs. `~1.87s` per 500-image pass). *(Note: the slight `1–2`-image difference on intermediate clean-stream checkpoints between `exp_b_held_out_pilot.csv` and `exp_b_held_out_pilot_205.csv` / `exp_b_held_out_seed42.csv` reflects non-deterministic cuDNN/CUDA floating-point accumulation across runs.)*
+The noisy adaptation stream in `exp_b_held_out_pilot_205.csv` matches Khoi's CPU aggregate accuracy counts **identically across every checkpoint and held-out view**, and Colab T4 runs ~`6.2–6.6×` faster on adaptation and ~`34×` faster on held-out evaluation (`~0.055s` vs. `~1.89s` per 500-image pass). *(Note: Across the three `010226f` T4 runs—`pilot`, `pilot_205`, and `seed42`—which executed prior to enabling deterministic cuDNN mode, intermediate counts varied by `1–3` images (`0.20–0.60 pp`): on the clean stream at `n=100` (`301–302` clean, `141–142` noisy) and `n=200` (`310–311` clean, `168–171` noisy), and by `1` image on `noisy → clean` at `n=200` (`316` in `pilot`/`pilot_205` vs. `315` in `seed42`). Additionally, row 2 of `exp_b_held_out_pilot.csv` records `1.576s` for `supervised_frozen` clean eval due to first-pass CUDA kernel initialization prior to adding one-time GPU warmup.)*
 
 ---
 
@@ -137,7 +139,7 @@ Since `online_ttt` starts at `n=0` from `joint_frozen` (`65.20%` clean, `34.60%`
 ## 6. Differences vs. Earlier Nov 11 Experiment B Runs & Verification Status
 
 1. **Evaluation protocol difference**:
-   - **Nov 11 (`results/ttt_summary.csv`, `results/ttt_window_summary.csv`)**: Evaluated `online_ttt` online on the incoming `2,000`-image stream itself (each image adapted and scored immediately, summarized over `200`-image rolling windows: `62.10%` clean, `48.95%` noisy on MPS; `61.75%` clean, `48.80%` noisy on Colab T4 CUDA).
+   - **Nov 11 (`results/ttt_summary.csv`, `results/ttt_window_summary.csv`)**: Evaluated `online_ttt` online on the incoming `2,000`-image stream itself (each image adapted and scored immediately, summarized over `200`-image rolling windows: `62.10%` clean, `48.95%` noisy on MPS; Khoi's independent CPU replay in `origin/khoi/ttt-evaluation:results/ttt_exp_b_independent_replay.csv` recorded `61.95%` clean, `48.80%` noisy).
    - **This week (`results/exp_b_held_out_seed42.csv`)**: Separates `1,500` adaptation images from a fixed `500`-image held-out set and evaluates **both clean and noisy views** at every `100`-step checkpoint. This cleanly reveals both in-domain adaptation gains (`+12.80 pp` at end, `+18.40 pp` peak on noisy→noisy) and out-of-domain drift (`-15.00 pp` on noisy→clean) that single-stream evaluation could not measure.
 2. **State-preservation checks (`results/exp_b_held_out_seed42_checks.json`)**:
    - `all_checks_passed: true` across all 4 run entries (`supervised_frozen`, `joint_frozen`, `online_ttt` clean, `online_ttt` noisy).

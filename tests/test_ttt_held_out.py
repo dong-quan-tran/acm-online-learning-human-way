@@ -10,6 +10,7 @@ from pathlib import Path
 import random
 import subprocess
 import sys
+import time
 from typing import Any, Dict, List
 
 import numpy as np
@@ -30,6 +31,7 @@ from src.data import (
 from src.models import SmallResNetTTT
 from src.ttt_held_out import (
     HELD_OUT_CSV_COLUMNS,
+    HELD_OUT_PREDICTION_COLUMNS,
     _assert_rng_state_unchanged,
     _capture_rng_state,
     adapt_image_only,
@@ -1670,3 +1672,337 @@ class TestRegressionAndEdgeCases:
         out_png = tmp_path / "held_out_plot.png"
         generate_held_out_plot(str(csv_path), str(out_png))
         assert out_png.is_file() and out_png.stat().st_size > 0
+
+    def test_skip_invariant_checks_never_reports_all_passed(self, tmp_path: Path):
+        sup_ckpt = tmp_path / "sup.pt"
+        joint_ckpt = tmp_path / "joint.pt"
+        torch.save({"model_state_dict": SmallResNetTTT(num_classes=100).state_dict()}, sup_ckpt)
+        torch.save({"model_state_dict": SmallResNetTTT(num_classes=100).state_dict()}, joint_ckpt)
+        split_path = tmp_path / "split.json"
+        split_path.write_text(
+            json.dumps({
+                "adaptation_ids": ["test:0", "test:1", "test:2"],
+                "held_out_ids": ["test:10", "test:11"],
+            }),
+            encoding="utf-8",
+        )
+        out_csv = tmp_path / "skipped.csv"
+        _, report = run_held_out_experiment(
+            split_file=split_path,
+            output_csv=out_csv,
+            supervised_ckpt=sup_ckpt,
+            joint_ckpt=joint_ckpt,
+            eval_interval=2,
+            eval_batch_size=2,
+            conditions=["supervised_frozen", "online_ttt"],
+            adaptation_streams=["clean"],
+            held_out_views=["clean"],
+            datasets_by_split={"test": SyntheticCIFAR(num_samples=30)},
+            train_val_membership=None,
+            prior_test_membership=None,
+            verify_invariants=False,
+            device="cpu",
+        )
+        assert report["settings"]["verify_invariants"] is False
+        assert report["all_checks_passed"] is False
+        for run in report["runs"]:
+            assert run["invariants_checked"] is False
+            assert run["all_invariants_passed"] is None
+            if run["condition"] == "online_ttt":
+                assert run["frozen_heads_preserved"] is None
+
+    def test_deterministic_flag_logged_and_restores_global_torch_state(self, tmp_path: Path):
+        joint_ckpt = tmp_path / "joint.pt"
+        torch.save({"model_state_dict": SmallResNetTTT(num_classes=100).state_dict()}, joint_ckpt)
+        split_path = tmp_path / "split.json"
+        split_path.write_text(
+            json.dumps({
+                "adaptation_ids": ["test:0", "test:1"],
+                "held_out_ids": ["test:10", "test:11"],
+            }),
+            encoding="utf-8",
+        )
+        prev_det = torch.are_deterministic_algorithms_enabled()
+        prev_warn = torch.is_deterministic_algorithms_warn_only_enabled()
+        prev_cudnn_det = torch.backends.cudnn.deterministic
+        prev_cudnn_bench = torch.backends.cudnn.benchmark
+
+        _, report_det = run_held_out_experiment(
+            split_file=split_path,
+            output_csv=tmp_path / "det.csv",
+            joint_ckpt=joint_ckpt,
+            conditions=["joint_frozen"],
+            held_out_views=["clean"],
+            datasets_by_split={"test": SyntheticCIFAR(num_samples=30)},
+            train_val_membership=None,
+            prior_test_membership=None,
+            deterministic=True,
+            device="cpu",
+        )
+        assert report_det["settings"]["deterministic"] is True
+        assert torch.are_deterministic_algorithms_enabled() == prev_det
+        assert torch.is_deterministic_algorithms_warn_only_enabled() == prev_warn
+        assert torch.backends.cudnn.deterministic == prev_cudnn_det
+        assert torch.backends.cudnn.benchmark == prev_cudnn_bench
+
+        _, report_nodet = run_held_out_experiment(
+            split_file=split_path,
+            output_csv=tmp_path / "nodet.csv",
+            joint_ckpt=joint_ckpt,
+            conditions=["joint_frozen"],
+            held_out_views=["clean"],
+            datasets_by_split={"test": SyntheticCIFAR(num_samples=30)},
+            train_val_membership=None,
+            prior_test_membership=None,
+            deterministic=False,
+            device="cpu",
+        )
+        assert report_nodet["settings"]["deterministic"] is False
+
+    def test_chunked_adaptation_timing_excludes_dataloader_sleep(self):
+        torch.manual_seed(0)
+        model = SmallResNetTTT(num_classes=100)
+        ho_clean, ids_clean = prepare_held_out_batches(
+            _make_loader([("test", 100 + i) for i in range(4)], batch_size=4), batch_size=4
+        )
+        pulled = 0
+
+        def _slow_gen():
+            nonlocal pulled
+            for idx in range(5):
+                pulled += 1
+                time.sleep(0.08)
+                yield (torch.rand(1, 3, 32, 32), torch.tensor([idx % 20]), [f"test:{idx}"])
+
+        t0 = time.perf_counter()
+        _, audit = run_held_out_stream(
+            model=model,
+            adaptation_loader=_slow_gen(),
+            held_out_clean_batches=ho_clean,
+            held_out_clean_ids=ids_clean,
+            held_out_views=("clean",),
+            condition="online_ttt",
+            adaptation_stream_condition="clean",
+            eval_interval=2,
+            max_adapt_images=3,
+            ttt_lr=0.0,
+            ttt_steps=0,
+            device="cpu",
+        )
+        wall = time.perf_counter() - t0
+        # 3 items * 0.08s = 0.24s fetch sleep should NOT be counted in adaptation_time_seconds
+        assert pulled == 3
+        assert wall >= 0.22
+        assert audit["total_adaptation_time_seconds"] < 0.15
+        assert audit["checkpoints_evaluated"] == [0, 2, 3]
+
+    def test_ordered_predictions_hashes_and_save_predictions_export(self, tmp_path: Path):
+        sup_ckpt = tmp_path / "sup.pt"
+        joint_ckpt = tmp_path / "joint.pt"
+        torch.save({"model_state_dict": SmallResNetTTT(num_classes=100).state_dict()}, sup_ckpt)
+        torch.save({"model_state_dict": SmallResNetTTT(num_classes=100).state_dict()}, joint_ckpt)
+        split_path = tmp_path / "split.json"
+        split_path.write_text(
+            json.dumps({
+                "adaptation_ids": ["test:0", "test:1", "test:2"],
+                "held_out_ids": ["test:10", "test:11", "test:12", "test:13"],
+            }),
+            encoding="utf-8",
+        )
+        out_csv = tmp_path / "res.csv"
+        pred_csv = tmp_path / "preds.csv"
+        rows, report = run_held_out_experiment(
+            split_file=split_path,
+            output_csv=out_csv,
+            output_predictions=pred_csv,
+            supervised_ckpt=sup_ckpt,
+            joint_ckpt=joint_ckpt,
+            eval_interval=2,
+            eval_batch_size=2,
+            conditions=["joint_frozen", "online_ttt"],
+            adaptation_streams=["clean"],
+            held_out_views=["clean", "noisy"],
+            datasets_by_split={"test": SyntheticCIFAR(num_samples=30)},
+            train_val_membership=None,
+            prior_test_membership=None,
+            device="cpu",
+        )
+        assert pred_csv.is_file()
+        assert report["output_predictions"] == str(pred_csv)
+        # 1 frozen checkpoint + 3 online checkpoints (0, 2, 3) = 4 checkpoints * 2 views * 4 images = 32
+        assert report["total_predictions_written"] == 32
+        for run in report["runs"]:
+            assert set(run["held_out_ids_sha256_by_view"].keys()) == {"clean", "noisy"}
+            assert len(run["held_out_ids_sha256_by_view"]["clean"]) == 64
+            for view in ("clean", "noisy"):
+                assert set(run["predictions_sha256_by_view"][view].keys()) == {
+                    str(c) for c in run["checkpoints_evaluated"]
+                }
+
+        with open(pred_csv, "r", newline="", encoding="utf-8") as handle:
+            reader = csv.DictReader(handle)
+            assert tuple(reader.fieldnames or ()) == HELD_OUT_PREDICTION_COLUMNS
+            pred_rows = list(reader)
+        assert len(pred_rows) == 32
+
+        # Verify per-image predictions sum exactly to each CSV row's correct_prediction_count and order
+        for r in rows:
+            matched = [
+                p
+                for p in pred_rows
+                if p["condition"] == r["condition"]
+                and p["adaptation_stream_condition"] == r["adaptation_stream_condition"]
+                and p["held_out_condition"] == r["held_out_condition"]
+                and int(p["adaptation_images_processed"]) == int(r["adaptation_images_processed"])
+            ]
+            assert [p["sample_id"] for p in matched] == ["test:10", "test:11", "test:12", "test:13"]
+            assert sum(int(p["is_correct"]) for p in matched) == int(r["correct_prediction_count"])
+            assert "\\" not in r["source_checkpoint"]
+
+        # Overwrite protection on predictions CSV
+        with pytest.raises(FileExistsError, match="Refusing to overwrite existing predictions CSV"):
+            run_held_out_experiment(
+                split_file=split_path,
+                output_csv=tmp_path / "res2.csv",
+                output_predictions=pred_csv,
+                joint_ckpt=joint_ckpt,
+                conditions=["joint_frozen"],
+                held_out_views=["clean"],
+                datasets_by_split={"test": SyntheticCIFAR(num_samples=30)},
+                train_val_membership=None,
+                prior_test_membership=None,
+                device="cpu",
+            )
+
+    def test_embedded_source_train_dev_disjointness_and_noise_meta_check(self, tmp_path: Path):
+        # 1. Embedded source_train_ids overlapping adaptation must fail even when train_val_membership=None
+        leak_split = {
+            "source_train_ids": ["train:0", "train:1"],
+            "development_ids": ["train:2"],
+            "adaptation_ids": ["train:1", "test:5"],
+            "held_out_ids": ["test:6"],
+        }
+        with pytest.raises(ValueError, match="overlaps embedded source_train_ids"):
+            load_exp_b_split_pair(leak_split, train_val_membership=None, prior_test_membership=None)
+
+        # 2. Embedded source_train_ids disagreeing with train_val_membership must fail
+        clean_split = {
+            "source_train_ids": ["train:0", "train:1"],
+            "development_ids": ["train:2"],
+            "adaptation_ids": ["test:5"],
+            "held_out_ids": ["test:6"],
+        }
+        tv_mismatch = {"source_split": "train", "train": [0, 99], "validation": [2]}
+        with pytest.raises(ValueError, match="does not match train_val_membership"):
+            load_exp_b_split_pair(clean_split, train_val_membership=tv_mismatch, prior_test_membership=None)
+
+        tv_match = {"source_split": "train", "train": [0, 1], "validation": [2]}
+        _, _, meta = load_exp_b_split_pair(
+            clean_split, train_val_membership=tv_match, prior_test_membership=None
+        )
+        assert meta["embedded_source_lists_verified"] is True
+
+        # 3. Split noise_sigma / noise_seed mismatch against config fails unless explicitly overridden
+        joint_ckpt = tmp_path / "joint.pt"
+        torch.save({"model_state_dict": SmallResNetTTT(num_classes=100).state_dict()}, joint_ckpt)
+        split_with_noise = tmp_path / "split_noise.json"
+        split_with_noise.write_text(
+            json.dumps({
+                "noise_sigma": 0.12,
+                "noise_seed": 99,
+                "adaptation_ids": ["test:0"],
+                "held_out_ids": ["test:1"],
+            }),
+            encoding="utf-8",
+        )
+        with pytest.raises(ValueError, match="does not match split file noise_sigma"):
+            run_held_out_experiment(
+                split_file=split_with_noise,
+                output_csv=tmp_path / "ns_fail.csv",
+                joint_ckpt=joint_ckpt,
+                conditions=["joint_frozen"],
+                held_out_views=["clean"],
+                datasets_by_split={"test": SyntheticCIFAR(num_samples=20)},
+                train_val_membership=None,
+                prior_test_membership=None,
+                device="cpu",
+            )
+
+        # Explicit overrides succeed and flag split_metadata_matches_settings=False
+        _, rep_override = run_held_out_experiment(
+            split_file=split_with_noise,
+            output_csv=tmp_path / "ns_ok.csv",
+            joint_ckpt=joint_ckpt,
+            conditions=["joint_frozen"],
+            held_out_views=["clean"],
+            noise_sigma=0.05,
+            noise_seed=7,
+            datasets_by_split={"test": SyntheticCIFAR(num_samples=20)},
+            train_val_membership=None,
+            prior_test_membership=None,
+            device="cpu",
+        )
+        assert rep_override["split_checks"]["split_metadata_matches_settings"] is False
+
+    def test_generate_held_out_plot_multiseed_and_cli(self, tmp_path: Path):
+        from results.generate_plot import generate_held_out_plot
+
+        csv_path = tmp_path / "multiseed.csv"
+        rows = []
+        for seed, offset in ((42, 0.0), (43, 0.04)):
+            for cond, stream, n, acc_clean, acc_noisy in [
+                ("supervised_frozen", "none", 0, 0.60 + offset, 0.35 + offset),
+                ("joint_frozen", "none", 0, 0.64 + offset, 0.34 + offset),
+                ("online_ttt", "clean", 0, 0.64 + offset, 0.34 + offset),
+                ("online_ttt", "clean", 100, 0.62 + offset, 0.32 + offset),
+                ("online_ttt", "noisy", 0, 0.64 + offset, 0.34 + offset),
+                ("online_ttt", "noisy", 100, 0.58 + offset, 0.44 + offset),
+            ]:
+                for view, acc in (("clean", acc_clean), ("noisy", acc_noisy)):
+                    rows.append({
+                        "experiment": "B",
+                        "condition": cond,
+                        "seed": str(seed),
+                        "source_checkpoint": "ckpt.pt",
+                        "code_version": "test",
+                        "adaptation_stream_condition": stream,
+                        "held_out_condition": view,
+                        "adaptation_images_processed": str(n),
+                        "held_out_image_count": "500",
+                        "correct_prediction_count": str(int(round(acc * 500))),
+                        "held_out_accuracy": f"{acc:.4f}",
+                        "adaptation_update_count": str(n),
+                        "adaptation_time_seconds": "0.5",
+                        "adaptation_interval_time_seconds": "0.5",
+                        "held_out_eval_time_seconds": "0.1",
+                        "cumulative_held_out_eval_time_seconds": "0.1",
+                        "config_path": "cfg.yaml",
+                        "split_locations": "split.json",
+                        "hardware": "cpu",
+                    })
+
+        with open(csv_path, "w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=HELD_OUT_CSV_COLUMNS)
+            writer.writeheader()
+            writer.writerows(rows)
+
+        out_png_api = tmp_path / "multiseed_api.png"
+        generate_held_out_plot(str(csv_path), str(out_png_api))
+        assert out_png_api.is_file() and out_png_api.stat().st_size > 0
+
+        out_png_cli = tmp_path / "multiseed_cli.png"
+        subprocess.run(
+            [
+                sys.executable,
+                "results/generate_plot.py",
+                "--held-out",
+                "--input-csv",
+                str(csv_path),
+                "--output-png",
+                str(out_png_cli),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        assert out_png_cli.is_file() and out_png_cli.stat().st_size > 0

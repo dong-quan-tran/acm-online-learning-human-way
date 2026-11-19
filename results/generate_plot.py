@@ -4,9 +4,11 @@ Visualizes rolling window accuracy across test images for evaluated conditions
 on Clean and Gaussian Noise streams directly from ``ttt_window_summary.csv``.
 """
 
+import argparse
 import csv
 import math
 from pathlib import Path
+import statistics
 
 import matplotlib
 
@@ -301,16 +303,26 @@ def generate_held_out_plot(
         },
     }
 
+    def _mean_std(values: list[float]) -> tuple[float, float]:
+        mean_val = sum(values) / len(values)
+        std_val = statistics.stdev(values) if len(values) > 1 else 0.0
+        return mean_val, std_val
+
     for ax, view_name, title in panel_specs:
         view_rows = by_view[view_name]
         for cond, style in frozen_styles.items():
-            matched = [r for r in view_rows if r["condition"] == cond]
+            matched = [float(r["held_out_accuracy"]) * 100.0 for r in view_rows if r["condition"] == cond]
             if matched:
-                ref_y = float(matched[0]["held_out_accuracy"]) * 100.0
+                ref_y, ref_std = _mean_std(matched)
+                ref_label = (
+                    f"{style['label']} ({ref_y:.1f}%)"
+                    if len(matched) == 1
+                    else f"{style['label']} ({ref_y:.1f}±{ref_std:.1f}%)"
+                )
                 ax.plot(
                     [0, x_hi],
                     [ref_y, ref_y],
-                    label=f"{style['label']} ({ref_y:.1f}%)",
+                    label=ref_label,
                     color=style["color"],
                     linestyle=style["linestyle"],
                     linewidth=style["linewidth"],
@@ -318,21 +330,25 @@ def generate_held_out_plot(
                 )
 
         for stream_cond, style in online_styles.items():
-            pts = sorted(
-                (
-                    r
-                    for r in view_rows
-                    if r["condition"] == "online_ttt"
+            grouped: dict[int, list[float]] = {}
+            for r in view_rows:
+                if (
+                    r["condition"] == "online_ttt"
                     and r["adaptation_stream_condition"] == stream_cond
-                ),
-                key=lambda r: int(r["adaptation_images_processed"]),
-            )
-            if pts:
-                xs = [int(r["adaptation_images_processed"]) for r in pts]
-                ys = [float(r["held_out_accuracy"]) * 100.0 for r in pts]
+                ):
+                    step = int(r["adaptation_images_processed"])
+                    grouped.setdefault(step, []).append(float(r["held_out_accuracy"]) * 100.0)
+            if grouped:
+                xs = sorted(grouped.keys())
+                means = []
+                stds = []
+                for step in xs:
+                    m, s = _mean_std(grouped[step])
+                    means.append(m)
+                    stds.append(s)
                 ax.plot(
                     xs,
-                    ys,
+                    means,
                     label=style["label"],
                     color=style["color"],
                     linestyle=style["linestyle"],
@@ -341,6 +357,10 @@ def generate_held_out_plot(
                     markersize=5.5,
                     alpha=0.95,
                 )
+                if any(s > 0.0 for s in stds):
+                    lo = [max(0.0, m - s) for m, s in zip(means, stds)]
+                    hi = [min(100.0, m + s) for m, s in zip(means, stds)]
+                    ax.fill_between(xs, lo, hi, color=style["color"], alpha=0.15)
 
         ax.set_title(title, fontsize=13, fontweight="bold", pad=10)
         ax.set_xlabel("Adaptation Images Processed", fontsize=11)
@@ -352,21 +372,22 @@ def generate_held_out_plot(
     ax1.set_ylabel("Held-Out Classification Accuracy (%)", fontsize=11)
 
     noisy_view_rows = by_view["noisy"]
-    noisy_stream_pts = sorted(
-        (
-            r
-            for r in noisy_view_rows
-            if r["condition"] == "online_ttt"
-            and r["adaptation_stream_condition"] == "noisy"
-        ),
-        key=lambda r: int(r["adaptation_images_processed"]),
-    )
-    joint_noisy = [r for r in noisy_view_rows if r["condition"] == "joint_frozen"]
-    if noisy_stream_pts and joint_noisy:
-        jf_y = float(joint_noisy[0]["held_out_accuracy"]) * 100.0
-        peak_pt = max(noisy_stream_pts, key=lambda r: float(r["held_out_accuracy"]))
-        peak_x = float(peak_pt["adaptation_images_processed"])
-        peak_y = float(peak_pt["held_out_accuracy"]) * 100.0
+    noisy_grouped: dict[int, list[float]] = {}
+    for r in noisy_view_rows:
+        if r["condition"] == "online_ttt" and r["adaptation_stream_condition"] == "noisy":
+            step = int(r["adaptation_images_processed"])
+            noisy_grouped.setdefault(step, []).append(float(r["held_out_accuracy"]) * 100.0)
+    joint_noisy = [
+        float(r["held_out_accuracy"]) * 100.0
+        for r in noisy_view_rows
+        if r["condition"] == "joint_frozen"
+    ]
+    if noisy_grouped and joint_noisy:
+        jf_y, _ = _mean_std(joint_noisy)
+        mean_by_step = {step: _mean_std(vals)[0] for step, vals in noisy_grouped.items()}
+        peak_step = max(mean_by_step.keys(), key=lambda s: mean_by_step[s])
+        peak_x = float(peak_step)
+        peak_y = mean_by_step[peak_step]
         delta_peak = peak_y - jf_y
         y_span = max(y_hi - y_lo, 1.0)
         text_x = max(x_hi * 0.08, min(x_hi * 0.58, peak_x - x_hi * 0.28))
@@ -403,5 +424,39 @@ def generate_held_out_plot(
     print(f"Held-out plot saved successfully to {out_p}")
 
 
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(
+        description="Generate Experiment B stream or periodic held-out accuracy plots from CSV."
+    )
+    parser.add_argument(
+        "--held-out",
+        action="store_true",
+        help="Generate periodic held-out accuracy plot instead of legacy rolling-window stream plot",
+    )
+    parser.add_argument(
+        "--input-csv",
+        type=str,
+        default=None,
+        help="Input CSV path (defaults to results/exp_b_held_out_seed42.csv for --held-out, else results/ttt_window_summary.csv)",
+    )
+    parser.add_argument(
+        "--output-png",
+        type=str,
+        default=None,
+        help="Output PNG path (defaults to results/exp_b_held_out_accuracy_plot.png for --held-out, else results/stream_accuracy_plot.png)",
+    )
+    args = parser.parse_args(argv)
+    if args.held_out:
+        generate_held_out_plot(
+            held_out_csv_path=args.input_csv or "results/exp_b_held_out_seed42.csv",
+            output_png_path=args.output_png or "results/exp_b_held_out_accuracy_plot.png",
+        )
+    else:
+        generate_stream_plot(
+            window_csv_path=args.input_csv or "results/ttt_window_summary.csv",
+            output_png_path=args.output_png or "results/stream_accuracy_plot.png",
+        )
+
+
 if __name__ == "__main__":
-    generate_stream_plot()
+    main()

@@ -703,14 +703,17 @@ def load_exp_b_split_pair(
       (data/exp_b_test_membership.json) so reports do not mislabel them as unseen.
     """
     separate_files = held_out_file is not None
+    raw_split = _read_json_mapping_or_list(split_file)
+    raw_held_out = _read_json_mapping_or_list(held_out_file) if separate_files else raw_split
+
     adapt_refs, adapt_meta = load_exp_b_split_ids(
-        split_file,
+        raw_split,
         key=adaptation_key,
         split_role="adaptation",
         allow_fallback_keys=separate_files,
     )
     held_out_refs, held_out_meta = load_exp_b_split_ids(
-        held_out_file if separate_files else split_file,
+        raw_held_out,
         key=held_out_key,
         split_role="held_out",
         allow_fallback_keys=separate_files,
@@ -725,6 +728,47 @@ def load_exp_b_split_pair(
             f"Adaptation and held-out splits overlap ({len(overlap_adapt_held)} shared IDs, "
             f"first: {sample})"
         )
+
+    embedded_train_set: Optional[set] = None
+    embedded_dev_set: Optional[set] = None
+    if isinstance(raw_split, dict):
+        if raw_split.get("source_train_ids") is not None:
+            raw_st = raw_split["source_train_ids"]
+            if not isinstance(raw_st, list) or not raw_st:
+                raise ValueError("Embedded 'source_train_ids' must be a non-empty list")
+            st_parsed = [parse_source_id(r, default_source_split="train") for r in raw_st]
+            if len(set(st_parsed)) != len(st_parsed):
+                raise ValueError("Embedded 'source_train_ids' contains duplicate source IDs")
+            embedded_train_set = set(st_parsed)
+        if raw_split.get("development_ids") is not None:
+            raw_dev = raw_split["development_ids"]
+            if not isinstance(raw_dev, list) or not raw_dev:
+                raise ValueError("Embedded 'development_ids' must be a non-empty list")
+            dev_parsed = [parse_source_id(r, default_source_split="train") for r in raw_dev]
+            if len(set(dev_parsed)) != len(dev_parsed):
+                raise ValueError("Embedded 'development_ids' contains duplicate source IDs")
+            embedded_dev_set = set(dev_parsed)
+
+    embedded_source_lists_verified = False
+    if embedded_train_set is not None and embedded_dev_set is not None:
+        if embedded_train_set & embedded_dev_set:
+            raise ValueError(
+                f"Embedded 'source_train_ids' and 'development_ids' overlap "
+                f"({len(embedded_train_set & embedded_dev_set)} shared IDs)"
+            )
+    embedded_pool = (embedded_train_set or set()) | (embedded_dev_set or set())
+    if embedded_pool:
+        if adapt_set & embedded_pool:
+            raise ValueError(
+                f"Adaptation split overlaps embedded source_train_ids/development_ids "
+                f"({len(adapt_set & embedded_pool)} shared IDs)"
+            )
+        if held_out_set & embedded_pool:
+            raise ValueError(
+                f"Held-out split overlaps embedded source_train_ids/development_ids "
+                f"({len(held_out_set & embedded_pool)} shared IDs)"
+            )
+        embedded_source_lists_verified = True
 
     if train_val_membership is not None:
         tv_raw = _read_json_mapping_or_list(train_val_membership)
@@ -745,6 +789,14 @@ def load_exp_b_split_pair(
             raise ValueError("train_val_membership 'train' and 'validation' must be lists")
         train_refs = {parse_source_id(r, default_source_split=tv_split) for r in train_entries}
         val_refs = {parse_source_id(r, default_source_split=tv_split) for r in val_entries}
+        if embedded_train_set is not None and embedded_train_set != train_refs:
+            raise ValueError(
+                "Embedded 'source_train_ids' in split file does not match train_val_membership['train']"
+            )
+        if embedded_dev_set is not None and embedded_dev_set != val_refs:
+            raise ValueError(
+                "Embedded 'development_ids' in split file does not match train_val_membership['validation']"
+            )
         source_pool = train_refs | val_refs
         if adapt_set & source_pool:
             raise ValueError(
@@ -797,6 +849,7 @@ def load_exp_b_split_pair(
         "held_out_key": held_out_meta.get("resolved_key"),
         "adaptation_metadata": adapt_meta,
         "held_out_metadata": held_out_meta,
+        "embedded_source_lists_verified": embedded_source_lists_verified,
         "held_out_examined_in_prior_exp_b": held_out_prior_overlap > 0,
         "held_out_prior_overlap_count": held_out_prior_overlap,
         "adaptation_prior_overlap_count": adapt_prior_overlap,

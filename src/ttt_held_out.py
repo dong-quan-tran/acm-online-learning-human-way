@@ -17,11 +17,14 @@ Implements the Team Assignment protocol (docs/11.14-11.20_assignment.md):
 from __future__ import annotations
 
 import argparse
+import contextlib
 import copy
 import csv
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+import hashlib
 import itertools
 import json
+import math
 import os
 from pathlib import Path
 import random
@@ -89,6 +92,20 @@ HELD_OUT_CSV_COLUMNS: Tuple[str, ...] = (
 )
 
 
+HELD_OUT_PREDICTION_COLUMNS: Tuple[str, ...] = (
+    "experiment",
+    "condition",
+    "seed",
+    "adaptation_stream_condition",
+    "held_out_condition",
+    "adaptation_images_processed",
+    "sample_id",
+    "true_label",
+    "predicted_label",
+    "is_correct",
+)
+
+
 @dataclass
 class HeldOutEvalResult:
     """Result of one fixed held-out evaluation pass."""
@@ -99,6 +116,67 @@ class HeldOutEvalResult:
     eval_time_seconds: float
     predictions: List[int]
     sample_ids: List[str]
+    labels: List[int] = field(default_factory=list)
+
+
+def _hash_sample_ids(sample_ids: Sequence[str]) -> str:
+    payload = "\n".join(str(sid) for sid in sample_ids).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _hash_predictions(sample_ids: Sequence[str], predictions: Sequence[int]) -> str:
+    payload = "\n".join(
+        f"{sid}:{int(pred)}" for sid, pred in zip(sample_ids, predictions)
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _seed_all(seed: int, device: torch.device) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if device.type == "cuda" and torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
+@contextlib.contextmanager
+def _deterministic_context(device: torch.device, enabled: bool) -> Iterator[None]:
+    """Scope deterministic cuDNN / PyTorch algorithm settings and restore on exit."""
+    if not enabled:
+        yield
+        return
+
+    prev_det = torch.are_deterministic_algorithms_enabled()
+    prev_warn = torch.is_deterministic_algorithms_warn_only_enabled()
+    has_cudnn = hasattr(torch.backends, "cudnn")
+    prev_cudnn_det = torch.backends.cudnn.deterministic if has_cudnn else None
+    prev_cudnn_bench = torch.backends.cudnn.benchmark if has_cudnn else None
+
+    try:
+        if device.type == "cuda":
+            os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+        if has_cudnn:
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark = False
+        torch.use_deterministic_algorithms(True, warn_only=True)
+        yield
+    finally:
+        torch.use_deterministic_algorithms(prev_det, warn_only=prev_warn)
+        if has_cudnn and prev_cudnn_det is not None and prev_cudnn_bench is not None:
+            torch.backends.cudnn.deterministic = prev_cudnn_det
+            torch.backends.cudnn.benchmark = prev_cudnn_bench
+
+
+def _warmup_device(model: SmallResNetTTT, device: torch.device) -> None:
+    """Run a single no-grad zero-tensor warmup pass on GPU to exclude kernel init from timings."""
+    if device.type not in ("cuda", "mps"):
+        return
+    in_channels = int(model.features[0][0].in_channels)
+    dummy = torch.zeros((1, in_channels, 32, 32), device=device, dtype=torch.float32)
+    model.eval()
+    with torch.no_grad():
+        _ = model(dummy)
+    sync_device(device)
 
 
 def get_code_version_strict() -> str:
@@ -385,6 +463,7 @@ def evaluate_held_out_set(
 
     predictions: List[int] = []
     recorded_ids: List[str] = []
+    recorded_labels: List[int] = []
     correct_count = 0
 
     sync_device(dev)
@@ -402,13 +481,15 @@ def evaluate_held_out_set(
             lbls = batch_lbls.tolist()
             for pred, lbl, sid in zip(preds, lbls, batch_sids):
                 pred_int = int(pred)
+                lbl_int = int(lbl)
                 if not 0 <= pred_int < expected_num_outputs:
                     raise RuntimeError(
                         f"Prediction {pred_int} outside 0..{expected_num_outputs - 1} range"
                     )
                 predictions.append(pred_int)
                 recorded_ids.append(str(sid))
-                if pred_int == int(lbl):
+                recorded_labels.append(lbl_int)
+                if pred_int == lbl_int:
                     correct_count += 1
     sync_device(dev)
     eval_time = time.perf_counter() - t0
@@ -435,6 +516,7 @@ def evaluate_held_out_set(
         eval_time_seconds=float(eval_time),
         predictions=predictions,
         sample_ids=recorded_ids,
+        labels=recorded_labels,
     )
 
 
@@ -616,6 +698,7 @@ def run_held_out_stream(
     verify_invariants: bool = True,
     max_adapt_images: Optional[int] = None,
     expected_num_outputs: int = 100,
+    prediction_records: Optional[List[Dict[str, Any]]] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """Run one frozen reference condition or one online TTT adaptation stream."""
     if eval_interval <= 0:
@@ -655,6 +738,12 @@ def run_held_out_stream(
     rows: List[Dict[str, Any]] = []
     recorded_checkpoints: List[int] = []
     eval_time_cum_by_view: Dict[str, float] = {view: 0.0 for view in active_views}
+    held_out_ids_sha256_by_view: Dict[str, str] = {
+        view: _hash_sample_ids(ho_ids) for view, _, ho_ids in view_payloads
+    }
+    predictions_sha256_by_view: Dict[str, Dict[str, str]] = {
+        view: {} for view in active_views
+    }
 
     def _record_checkpoint(
         processed: int,
@@ -675,6 +764,27 @@ def run_held_out_stream(
                 expected_num_outputs=expected_num_outputs,
             )
             eval_time_cum_by_view[ho_cond] += res.eval_time_seconds
+            predictions_sha256_by_view[ho_cond][str(processed)] = _hash_predictions(
+                res.sample_ids, res.predictions
+            )
+            if prediction_records is not None:
+                for sid, lbl_int, pred_int in zip(
+                    res.sample_ids, res.labels, res.predictions
+                ):
+                    prediction_records.append(
+                        {
+                            "experiment": "B",
+                            "condition": condition,
+                            "seed": int(seed),
+                            "adaptation_stream_condition": adaptation_stream_condition,
+                            "held_out_condition": ho_cond,
+                            "adaptation_images_processed": int(processed),
+                            "sample_id": sid,
+                            "true_label": int(lbl_int),
+                            "predicted_label": int(pred_int),
+                            "is_correct": int(pred_int == lbl_int),
+                        }
+                    )
             rows.append(
                 build_held_out_row(
                     experiment="B",
@@ -711,10 +821,15 @@ def run_held_out_stream(
             "total_adaptation_time_seconds": 0.0,
             "total_held_out_eval_time_by_view": dict(eval_time_cum_by_view),
             "total_held_out_eval_time_seconds": sum(eval_time_cum_by_view.values()),
-            "all_invariants_passed": True,
+            "held_out_ids_sha256_by_view": dict(held_out_ids_sha256_by_view),
+            "predictions_sha256_by_view": {
+                k: dict(v) for k, v in predictions_sha256_by_view.items()
+            },
+            "invariants_checked": bool(verify_invariants),
+            "all_invariants_passed": True if verify_invariants else None,
         }
 
-    # Online TTT: stream images lazily (O(1) memory, labels never enter adaptation)
+    # Online TTT: stream images lazily in eval_interval chunks (labels never enter adaptation)
     adapt_iter = _iter_adaptation_images(adaptation_loader, max_adapt_images=max_adapt_images)
     try:
         first_item = next(adapt_iter)
@@ -740,48 +855,45 @@ def run_held_out_stream(
     adapt_time_cum = 0.0
     performs_updates = ttt_lr > 0.0 and ttt_steps > 0
 
-    sync_device(dev)
-    chunk_t0 = time.perf_counter()
+    stream_iter = itertools.chain([first_item], adapt_iter)
+    while True:
+        # Fetch the next eval_interval images outside the adaptation compute timer
+        # so DataLoader / noise-generation overhead does not pollute adaptation_time_seconds.
+        chunk = list(itertools.islice(stream_iter, eval_interval))
+        if not chunk:
+            break
 
-    def _flush_checkpoint(n_processed: int) -> None:
-        nonlocal adapt_time_cum, chunk_t0
+        sync_device(dev)
+        chunk_t0 = time.perf_counter()
+        for img, _sid in chunk:
+            _adapt_image_step(
+                model,
+                img,
+                device=dev,
+                optimizer=optimizer,
+                ttt_lr=ttt_lr,
+                ttt_steps=ttt_steps,
+                lambda_rot=lambda_rot,
+            )
+            processed += 1
+            if performs_updates:
+                updates += ttt_steps
         sync_device(dev)
         interval_time = time.perf_counter() - chunk_t0
         adapt_time_cum += interval_time
+
         if verify_invariants:
             _assert_model_state_unchanged(init_cls_sd, model.classifier)
             _assert_model_state_unchanged(init_rot_sd, model.rotation_head)
         _record_checkpoint(
-            n_processed,
+            processed,
             updates,
             adapt_time_cum,
             interval_time,
             optimizer=optimizer,
         )
-        sync_device(dev)
-        chunk_t0 = time.perf_counter()
-
-    for img, _sid in itertools.chain([first_item], adapt_iter):
-        _adapt_image_step(
-            model,
-            img,
-            device=dev,
-            optimizer=optimizer,
-            ttt_lr=ttt_lr,
-            ttt_steps=ttt_steps,
-            lambda_rot=lambda_rot,
-        )
-        processed += 1
-        if performs_updates:
-            updates += ttt_steps
-
-        if processed % eval_interval == 0:
-            _flush_checkpoint(processed)
 
     total_adapt = processed
-    if total_adapt % eval_interval != 0:
-        _flush_checkpoint(total_adapt)
-
     freeze_heads_for_ttt(model)
 
     expected_checkpoints = [0] + list(range(eval_interval, total_adapt + 1, eval_interval))
@@ -809,9 +921,14 @@ def run_held_out_stream(
         "total_adaptation_time_seconds": adapt_time_cum,
         "total_held_out_eval_time_by_view": dict(eval_time_cum_by_view),
         "total_held_out_eval_time_seconds": sum(eval_time_cum_by_view.values()),
-        "frozen_heads_preserved": True,
+        "held_out_ids_sha256_by_view": dict(held_out_ids_sha256_by_view),
+        "predictions_sha256_by_view": {
+            k: dict(v) for k, v in predictions_sha256_by_view.items()
+        },
+        "invariants_checked": bool(verify_invariants),
+        "frozen_heads_preserved": True if verify_invariants else None,
         "features_adapted": features_changed,
-        "all_invariants_passed": True,
+        "all_invariants_passed": True if verify_invariants else None,
     }
 
 
@@ -885,6 +1002,39 @@ def save_held_out_csv(
     return out
 
 
+def save_predictions_csv(
+    prediction_rows: Sequence[Dict[str, Any]],
+    output_path: Union[str, Path],
+    overwrite: bool = False,
+) -> Path:
+    """Write ordered per-image held-out predictions CSV atomically."""
+    out = Path(output_path)
+    if out.name in PROTECTED_LEGACY_OUTPUTS:
+        raise ValueError(
+            f"Refusing to overwrite legacy Experiment B output '{out.name}'."
+        )
+    if out.exists() and not overwrite:
+        raise FileExistsError(
+            f"Refusing to overwrite existing predictions CSV '{out}'. "
+            "Choose a new --save-predictions path or pass --overwrite."
+        )
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp_out = out.with_name(f".{out.name}.tmp.{os.getpid()}")
+    try:
+        with open(tmp_out, "w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=HELD_OUT_PREDICTION_COLUMNS)
+            writer.writeheader()
+            for row in prediction_rows:
+                writer.writerow(
+                    {col: row.get(col, "") for col in HELD_OUT_PREDICTION_COLUMNS}
+                )
+        os.replace(tmp_out, out)
+    finally:
+        if tmp_out.exists():
+            tmp_out.unlink()
+    return out
+
+
 def _validate_checkpoint_metadata(
     ckpt_meta: Dict[str, Any],
     *,
@@ -929,6 +1079,7 @@ def run_held_out_experiment(
     config_path: Optional[Union[str, Path]] = DEFAULT_HELD_OUT_CONFIG,
     output_csv: Optional[Union[str, Path]] = None,
     output_checks: Optional[Union[str, Path]] = None,
+    output_predictions: Optional[Union[str, Path]] = None,
     supervised_ckpt: Optional[Union[str, Path]] = None,
     joint_ckpt: Optional[Union[str, Path]] = None,
     seed: Optional[int] = None,
@@ -946,6 +1097,7 @@ def run_held_out_experiment(
     device: Optional[str] = None,
     max_adapt_images: Optional[int] = None,
     verify_invariants: bool = True,
+    deterministic: bool = True,
     schema_map_path: Optional[Union[str, Path, Dict[str, str]]] = None,
     datasets_by_split: Optional[Dict[str, Any]] = None,
     train_val_membership: Any = _UNSET,
@@ -957,7 +1109,7 @@ def run_held_out_experiment(
     config_path_str = "<none>"
     if config_path is not None:
         _reject_empty_path(config_path, "config_path must be a non-empty path")
-        config_path_str = str(config_path)
+        config_path_str = Path(config_path).as_posix()
         cfg = _load_yaml_mapping(config_path)
 
     if split_file is not None:
@@ -970,6 +1122,8 @@ def run_held_out_experiment(
         _reject_empty_path(output_csv, "output_csv must be a non-empty path")
     if output_checks is not None:
         _reject_empty_path(output_checks, "output_checks must be a non-empty path")
+    if output_predictions is not None:
+        _reject_empty_path(output_predictions, "output_predictions must be a non-empty path")
     if supervised_ckpt is not None:
         _reject_empty_path(supervised_ckpt, "supervised_ckpt must be a non-empty path")
     if joint_ckpt is not None:
@@ -1090,6 +1244,27 @@ def run_held_out_experiment(
             "Choose a new output path or pass --overwrite."
         )
 
+    resolved_output_predictions = (
+        _cfg_path_or(paths_cfg, "output_predictions", None)
+        if output_predictions is None
+        else output_predictions
+    )
+    predictions_path = (
+        Path(resolved_output_predictions)
+        if resolved_output_predictions is not None
+        else None
+    )
+    if predictions_path is not None:
+        if predictions_path.name in PROTECTED_LEGACY_OUTPUTS:
+            raise ValueError(
+                f"Refusing to overwrite legacy Experiment B output '{predictions_path.name}'."
+            )
+        if predictions_path.exists() and not overwrite:
+            raise FileExistsError(
+                f"Refusing to overwrite existing predictions CSV '{predictions_path}'. "
+                "Choose a new --save-predictions path or pass --overwrite."
+            )
+
     resolved_train_val = (
         _cfg_path_or(paths_cfg, "shared_c20_membership", SHARED_C20_MEMBERSHIP_PATH)
         if train_val_membership is _UNSET
@@ -1154,6 +1329,32 @@ def run_held_out_experiment(
         adapt_refs = adapt_refs[:max_adapt_images]
     split_meta["adaptation_count_effective"] = len(adapt_refs)
 
+    adapt_meta = split_meta.get("adaptation_metadata") or {}
+    if noise_sigma is None and adapt_meta.get("noise_sigma") is not None:
+        split_sigma = float(adapt_meta["noise_sigma"])
+        if not math.isclose(resolved_noise_sigma, split_sigma, rel_tol=0.0, abs_tol=1e-9):
+            raise ValueError(
+                f"Config noise_sigma={resolved_noise_sigma} does not match split file "
+                f"noise_sigma={split_sigma}. Pass noise_sigma explicitly to override."
+            )
+    if noise_seed is None and adapt_meta.get("noise_seed") is not None:
+        split_nseed = int(adapt_meta["noise_seed"])
+        if resolved_noise_seed != split_nseed:
+            raise ValueError(
+                f"Config noise_seed={resolved_noise_seed} does not match split file "
+                f"noise_seed={split_nseed}. Pass noise_seed explicitly to override."
+            )
+    split_meta_matches = True
+    if adapt_meta.get("noise_sigma") is not None and not math.isclose(
+        resolved_noise_sigma, float(adapt_meta["noise_sigma"]), rel_tol=0.0, abs_tol=1e-9
+    ):
+        split_meta_matches = False
+    if adapt_meta.get("noise_seed") is not None and resolved_noise_seed != int(
+        adapt_meta["noise_seed"]
+    ):
+        split_meta_matches = False
+    split_meta["split_metadata_matches_settings"] = split_meta_matches
+
     shared_ds: Dict[str, Any] = dict(datasets_by_split) if datasets_by_split is not None else {}
 
     ho_clean_batches: Optional[List[Tuple[torch.Tensor, torch.Tensor, Tuple[str, ...]]]] = None
@@ -1210,7 +1411,7 @@ def run_held_out_experiment(
     split_desc = (
         "<in-memory>"
         if isinstance(resolved_split_file, dict)
-        else str(resolved_split_file)
+        else Path(resolved_split_file).as_posix()
     )
     if resolved_held_out_file is None:
         split_loc_str = split_desc
@@ -1218,11 +1419,14 @@ def run_held_out_experiment(
         ho_desc = (
             "<in-memory>"
             if isinstance(resolved_held_out_file, dict)
-            else str(resolved_held_out_file)
+            else Path(resolved_held_out_file).as_posix()
         )
         split_loc_str = f"{split_desc};{ho_desc}"
 
     all_rows: List[Dict[str, Any]] = []
+    all_prediction_records: Optional[List[Dict[str, Any]]] = (
+        [] if predictions_path is not None else None
+    )
     run_audits: List[Dict[str, Any]] = []
     resolved_num_outputs: Optional[int] = None
 
@@ -1236,54 +1440,61 @@ def run_held_out_experiment(
             for stream_cond in resolved_streams:
                 run_specs.append(("online_ttt", stream_cond, jnt_path, adapt_loaders[stream_cond]))
 
-    for cond_name, stream_cond, ckpt_path, adapt_loader in run_specs:
-        # Load a fresh source checkpoint for every run (frozen or adaptive stream)
-        fresh_model, ckpt_meta = load_model(
-            ckpt_path,
-            device=dev,
-            model_config=cfg,
-        )
-        model_out_dim = int(fresh_model.classifier[-1].out_features)
-        if resolved_num_outputs is None:
-            resolved_num_outputs = model_out_dim
-        elif model_out_dim != resolved_num_outputs:
-            raise ValueError(
-                f"Checkpoint '{ckpt_path}' has num_outputs={model_out_dim}, "
-                f"expected {resolved_num_outputs}"
+    warmed_up = False
+    with _deterministic_context(dev, deterministic):
+        for cond_name, stream_cond, ckpt_path, adapt_loader in run_specs:
+            # Load a fresh source checkpoint for every run (frozen or adaptive stream)
+            fresh_model, ckpt_meta = load_model(
+                ckpt_path,
+                device=dev,
+                model_config=cfg,
             )
-        _validate_checkpoint_metadata(
-            ckpt_meta,
-            ckpt_path=ckpt_path,
-            condition=cond_name,
-            expected_seed=resolved_seed,
-        )
-        rows, audit = run_held_out_stream(
-            model=fresh_model,
-            adaptation_loader=adapt_loader,
-            held_out_clean_batches=ho_clean_batches,
-            held_out_clean_ids=ho_clean_ids,
-            held_out_noisy_batches=ho_noisy_batches,
-            held_out_noisy_ids=ho_noisy_ids,
-            held_out_views=resolved_views,
-            condition=cond_name,
-            adaptation_stream_condition=stream_cond,
-            eval_interval=resolved_eval_interval,
-            ttt_lr=resolved_ttt_lr,
-            ttt_steps=resolved_ttt_steps,
-            ttt_momentum=resolved_ttt_momentum,
-            lambda_rot=resolved_lambda_rot,
-            seed=resolved_seed,
-            source_checkpoint=str(ckpt_path),
-            config_path=config_path_str,
-            split_locations=split_loc_str,
-            code_version=ver,
-            device=dev,
-            verify_invariants=verify_invariants,
-            max_adapt_images=max_adapt_images,
-            expected_num_outputs=model_out_dim,
-        )
-        all_rows.extend(rows)
-        run_audits.append(audit)
+            model_out_dim = int(fresh_model.classifier[-1].out_features)
+            if resolved_num_outputs is None:
+                resolved_num_outputs = model_out_dim
+            elif model_out_dim != resolved_num_outputs:
+                raise ValueError(
+                    f"Checkpoint '{ckpt_path}' has num_outputs={model_out_dim}, "
+                    f"expected {resolved_num_outputs}"
+                )
+            _validate_checkpoint_metadata(
+                ckpt_meta,
+                ckpt_path=ckpt_path,
+                condition=cond_name,
+                expected_seed=resolved_seed,
+            )
+            if not warmed_up:
+                _warmup_device(fresh_model, dev)
+                warmed_up = True
+            _seed_all(resolved_seed, dev)
+            rows, audit = run_held_out_stream(
+                model=fresh_model,
+                adaptation_loader=adapt_loader,
+                held_out_clean_batches=ho_clean_batches,
+                held_out_clean_ids=ho_clean_ids,
+                held_out_noisy_batches=ho_noisy_batches,
+                held_out_noisy_ids=ho_noisy_ids,
+                held_out_views=resolved_views,
+                condition=cond_name,
+                adaptation_stream_condition=stream_cond,
+                eval_interval=resolved_eval_interval,
+                ttt_lr=resolved_ttt_lr,
+                ttt_steps=resolved_ttt_steps,
+                ttt_momentum=resolved_ttt_momentum,
+                lambda_rot=resolved_lambda_rot,
+                seed=resolved_seed,
+                source_checkpoint=ckpt_path.as_posix(),
+                config_path=config_path_str,
+                split_locations=split_loc_str,
+                code_version=ver,
+                device=dev,
+                verify_invariants=verify_invariants,
+                max_adapt_images=max_adapt_images,
+                expected_num_outputs=model_out_dim,
+                prediction_records=all_prediction_records,
+            )
+            all_rows.extend(rows)
+            run_audits.append(audit)
 
     out_csv_path = save_held_out_csv(
         all_rows,
@@ -1291,6 +1502,14 @@ def run_held_out_experiment(
         schema_map=schema_map,
         overwrite=overwrite,
     )
+    out_pred_path: Optional[Path] = None
+    if predictions_path is not None and all_prediction_records is not None:
+        out_pred_path = save_predictions_csv(
+            all_prediction_records,
+            predictions_path,
+            overwrite=overwrite,
+        )
+
     checks_report = {
         "experiment": "B",
         "seed": resolved_seed,
@@ -1300,16 +1519,19 @@ def run_held_out_experiment(
         "split_locations": split_loc_str,
         "output_csv": str(out_csv_path),
         "output_checks": str(checks_path),
+        "output_predictions": str(out_pred_path) if out_pred_path is not None else None,
         "timing_semantics": {
             "adaptation_time_seconds": (
-                "Cumulative adaptation wall time since stream start for this condition; "
-                "identical across clean/noisy held-out rows at the same checkpoint (do not sum across rows)."
+                "Cumulative pure adaptation compute wall time since stream start for this condition "
+                "(excluding DataLoader/noise fetch overhead); identical across clean/noisy held-out rows "
+                "at the same checkpoint (do not sum across rows)."
             ),
             "adaptation_interval_time_seconds": (
-                "Adaptation wall time since the previous checkpoint for this stream."
+                "Pure adaptation compute wall time since the previous checkpoint for this stream."
             ),
             "held_out_eval_time_seconds": (
-                "Wall time for this individual held-out evaluation pass (per view, per checkpoint)."
+                "Wall time for this individual held-out evaluation pass (per view, per checkpoint) "
+                "after one-time GPU kernel warmup."
             ),
             "cumulative_held_out_eval_time_seconds": (
                 "Cumulative held-out evaluation wall time across checkpoints for this held_out_condition view."
@@ -1329,11 +1551,17 @@ def run_held_out_experiment(
             "noise_sigma": resolved_noise_sigma,
             "noise_seed": resolved_noise_seed,
             "max_adapt_images": max_adapt_images,
+            "verify_invariants": bool(verify_invariants),
+            "deterministic": bool(deterministic),
         },
         "split_checks": split_meta,
         "runs": run_audits,
         "total_rows_written": len(all_rows),
-        "all_checks_passed": all(r["all_invariants_passed"] for r in run_audits),
+        "total_predictions_written": (
+            len(all_prediction_records) if all_prediction_records is not None else 0
+        ),
+        "all_checks_passed": bool(verify_invariants)
+        and all(r["all_invariants_passed"] is True for r in run_audits),
     }
 
     checks_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1390,6 +1618,12 @@ def main(argv: Optional[List[str]] = None) -> None:
         help="Output CSV path (defaults to config or results/exp_b_held_out_pilot.csv)",
     )
     parser.add_argument(
+        "--save-predictions",
+        type=str,
+        default=None,
+        help="Optional CSV path to write ordered per-image held-out predictions evidence",
+    )
+    parser.add_argument(
         "--schema-map",
         type=str,
         default=None,
@@ -1423,9 +1657,14 @@ def main(argv: Optional[List[str]] = None) -> None:
         choices=["auto", "mps", "cuda", "cpu"],
     )
     parser.add_argument(
+        "--no-deterministic",
+        action="store_true",
+        help="Disable deterministic cuDNN / PyTorch algorithm mode",
+    )
+    parser.add_argument(
         "--skip-invariant-checks",
         action="store_true",
-        help="Disable per-checkpoint model/optimizer/RNG snapshot assertions",
+        help="Disable per-checkpoint model/optimizer/RNG snapshot assertions (marks all_checks_passed=false)",
     )
     parser.add_argument(
         "--check-splits-only",
@@ -1483,6 +1722,7 @@ def main(argv: Optional[List[str]] = None) -> None:
         held_out_key=args.held_out_key,
         config_path=args.config,
         output_csv=args.output_csv,
+        output_predictions=args.save_predictions,
         supervised_ckpt=args.supervised_ckpt,
         joint_ckpt=args.joint_ckpt,
         seed=args.seed,
@@ -1496,11 +1736,17 @@ def main(argv: Optional[List[str]] = None) -> None:
         device=args.device,
         max_adapt_images=args.max_adapt_images,
         verify_invariants=not args.skip_invariant_checks,
+        deterministic=not args.no_deterministic,
         schema_map_path=args.schema_map,
         overwrite=args.overwrite,
     )
 
     print(f"[Held-Out Runner] Saved {len(rows)} rows to {report['output_csv']}")
+    if report.get("output_predictions"):
+        print(
+            f"[Held-Out Runner] Saved {report['total_predictions_written']} ordered predictions to "
+            f"{report['output_predictions']}"
+        )
     if report["split_checks"].get("held_out_examined_in_prior_exp_b"):
         overlap_n = report["split_checks"]["held_out_prior_overlap_count"]
         print(
