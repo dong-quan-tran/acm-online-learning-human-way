@@ -111,125 +111,88 @@ The checker compares the complete clean and corrupted label order and checks
 ten pairs, one per class, without running a model. It writes a pilot manifest
 only if the checks pass. Severity 1 is temporary, not the team's final choice.
 
-## Independent checks of the leads' published code
+## What I found
 
-Experiment A: [Nguyen's Kaggle notebook](https://www.kaggle.com/code/vunguyenledinh/notebook9e2b34c05b),
-version 1. Save its JSON export locally at `data/raw/nguyen-ttt-review.ipynb`.
-The checker pins the reviewed source hash and loads only the definitions it
-needs; it does not execute the notebook's download or training cells.
+### Tuong: CIFAR-100
+
+I loaded Tuong's two trained checkpoints and tried all four methods on 16
+clean images and their noisy copies. Each method made one prediction per
+image, in the saved order. The frozen models stayed the same, standard TTT
+reset after each image, and online TTT kept its changes in the shared layers.
+Tuong's 39 tests and his 128-image smoke test also passed locally.
+
+I then ran all eight method and input combinations on the full 2,000-image
+test set. The frozen runs made no updates, and the adaptive runs made 2,000
+each. The saved CSV totals agreed with all 80 evaluation windows.
+
+Six accuracies matched exactly. Online TTT was the only exception: I got
+61.95% on clean images and 48.80% on noisy images, compared with Tuong's
+62.10% and 48.95%. That's three fewer correct predictions out of 2,000 on
+each stream. I ran on CPU and Tuong ran on MPS, but I haven't confirmed
+what caused the difference. The evaluation checks still passed.
+
+### Nguyen: CIFAR-10-C
+
+[Nguyen's executed notebook](https://github.com/dong-quan-tran/acm-online-learning-human-way/blob/f2aa445/notebooks/nguyen-expa.ipynb)
+reports a full run on 8,000 evaluation images per condition. I checked that
+those rows didn't overlap his 2,000 development rows, and that the severity-5
+labels lined up with the clean test labels.
+
+I found two things in his original code:
+
+- With two images, an order of `[0, 0]` tests the first image twice and never
+  gives the second one a prediction. This happened in my deliberate bad-order
+  test. It doesn't show that his published run skipped any images.
+- `run_ttt` takes the real labels to print running accuracy. The update uses
+  rotation labels generated from the images, so I didn't find class labels
+  being used for updates. I moved accuracy scoring outside the adaptation
+  function in the review copy.
+
+The [current review copy](../notebooks/nguyen-expa-evaluation-review.ipynb)
+uses the published fixed settings, rejects bad orders, and checks for
+missing predictions. The smoke test uses two clean images and their two
+noisy copies with untrained weights to check reset and carry-forward.
+Independent trained accuracy is still unverified. See the
+[current held-out report](ttt_held_out_split_plan.md) for the fixed split,
+reported scores, and earlier tuning exposure.
+
+## How to repeat the checks
+
+For Nguyen's review copy, with the public datasets under `data/raw`:
 
 ```powershell
-python -m src.check_ttt_nguyen_notebook data/raw/nguyen-ttt-review.ipynb
+python -m src.check_ttt_nguyen_notebook notebooks/nguyen-expa-evaluation-review.ipynb
 ```
 
-Verified on rows 0 and 2 from the notebook's seeded evaluation split.
-Frozen inference left the base state unchanged. On clean and severity-5
-images, episodic started both images from the same shared weights; online
-entered the second image with the first image's updates. Independent reruns
-started from the same weights and returned the same predictions. The
-checkpoint can be supplied with `--checkpoint <joint_best.pt>`; this local
-run used random initialization.
+The script also accepts the reviewed version 1 Kaggle JSON export to reproduce
+the original findings. It only loads the definitions it needs and skips
+training. To test trained weights, supply `--checkpoint <joint_best.pt>`.
 
-Before full runs:
+For Nguyen's split, use NumPy `RandomState(0)` to permute the 50,000 training
+rows first, then the 10,000 official test rows. Sort each slice separately:
+the first 5,000 training rows are source development, the remaining 45,000
+are source training, the first 2,000 test rows are the fixed evaluation set,
+and the remaining 8,000 are the adaptation pool. The online adaptation order is
+`RandomState(1).permutation(8000)` over the sorted evaluation rows. Use
+official Gaussian noise severity 5, divide pixels by 255, then apply the
+notebook's model normalization. The smoke test uses `test:0` and `test:2`.
 
-1. Validate that `order` is a permutation of all evaluation indices.
-   The reviewed code accepted `[0, 0]` for two images, leaving the second
-   prediction at `-1`.
-2. Move running classification accuracy outside `run_ttt`. Its optional
-   `y` parameter is used for logging, not gradients, but class labels should
-   stay in scoring. Use the same seeded traversal for matched conditions,
-   or document any intentional difference.
-
-Experiment B: [Tuong's published revision](https://github.com/dong-quan-tran/acm-online-learning-human-way/tree/317aea7).
-Checked the published split files and configuration, including official test
-membership for classes 0-19. On real rows `test:6` and `test:7`, each of the
-four conditions recorded exactly one prediction per row in order on both
-streams. Frozen and standard runs ended at the starting state; online ended
-with updated weights. Update counts were 0 for frozen and 2 for adaptive runs.
-The published `tests/test_ttt_exp_b.py` suite also passed locally (39 tests),
-including the between-image reset and stateless optimizer checks. The
-published 128-image smoke test passed on CPU for each clean/noisy condition
-(0 updates for frozen, 128 for adaptive).
-
-To reproduce B, use revision `317aea7` in a separate checkout, make the
-cached CIFAR-100 data available under its `data/raw`, then run:
+For Tuong, use [revision 339978d](https://github.com/dong-quan-tran/acm-online-learning-human-way/tree/339978d)
+in a separate checkout with the CIFAR-100 cache available under `data/raw`:
 
 ```powershell
 python -m pytest tests/test_ttt_exp_b.py -q
 python -m src.ttt_cifar100 --smoke-test --device cpu --output results/khoi-smoke
 ```
 
-These initial smoke runs used randomly initialized models. Their accuracy
-values are not experiment findings.
+The smoke command uses random weights; it checks that the code runs. For the
+full replay, use the saved membership and config, batch size 1, and no
+shuffle. Start each call to `evaluate_condition` from a fresh checkpoint:
+the supervised checkpoint for supervised frozen and the joint checkpoint
+for the other three methods. The [replay CSV](../results/ttt_exp_b_independent_replay.csv)
+has all eight results.
 
-### Experiment B: trained checkpoint follow-up
-
-[Revision `339978d`](https://github.com/dong-quan-tran/acm-online-learning-human-way/tree/339978d)
-adds the trained supervised and joint seed-42 checkpoints and the result CSVs.
-The evaluation code and configuration are unchanged from `317aea7`.
-
-The independent CPU check loaded both checkpoints and ran every condition on
-the first 16 official evaluation rows and their paired noisy versions. All
-eight runs returned exactly one prediction per image in the saved order.
-Frozen runs made zero updates. Standard TTT made 16 updates and restored the
-initial state; online TTT made 16 updates and retained changes only in the
-shared features. Each condition started from a fresh copy of its checkpoint.
-
-The published CSV integrity checks passed: 2,000 unique ordered evaluation
-IDs, all eight summary rows consistent with the 80 saved windows, and update
-counts of 0 for frozen and 2,000 for adaptive runs. CSV consistency does not
-by itself reproduce the published accuracy.
-
-### Final retest and delivery status
-
-**Experiment A.** The [executed notebook at f2aa445](https://github.com/dong-quan-tran/acm-online-learning-human-way/blob/f2aa445/notebooks/nguyen-expa.ipynb)
-reports 8,000 evaluation images per condition. Both original findings were
-reproduced. The corrected copy at `notebooks/nguyen-expa-evaluation-review.ipynb`
-checks that stream order is a permutation, rejects missing predictions, and
-keeps class labels out of the adaptation runner. The two adaptive conditions
-use the same seeded order in final evaluation. The original run and its
-outputs were preserved; the corrected copy has no saved execution outputs.
-
-```powershell
-python -m src.check_ttt_nguyen_notebook notebooks/nguyen-expa-evaluation-review.ipynb
-```
-
-Passed on two clean and two paired severity-5 images: one prediction per
-image, frozen model unchanged, episodic reset, online carry-forward, and
-independent rerun. Repeated, missing, out-of-range and non-integer indices
-were rejected. The adapter no longer has a class-label parameter. This check
-used random weights; it does not independently reproduce Nguyen's trained
-accuracy. Adopting the corrected copy upstream and replaying Nguyen's trained
-run are outside this completed local pilot; the original public code has
-not been changed.
-
-To reproduce A membership, use NumPy RandomState(0), generate the 50,000-row
-training permutation first and then the 10,000-row official test permutation.
-Sort the first 5,000 training rows for source development and the remaining
-rows for source training. Sort the first 2,000 test rows for TTT development
-and the remaining 8,000 for evaluation. The final adaptive traversal is
-RandomState(1).permutation(8000) over the sorted evaluation list. Use official
-Gaussian noise severity 5 with pixels divided by 255 and the notebook's
-model normalization. Smoke source IDs are test:0 and test:2.
-
-**Experiment B.** All four conditions passed the 16-image trained-checkpoint
-smoke test on both streams. The full independent CPU replay also completed:
-all eight conditions returned 2,000 predictions in the saved order, with
-zero updates in frozen runs and 2,000 in adaptive runs. Six accuracies
-matched the published results exactly. Clean online TTT was 61.95% locally
-vs. 62.10% published; noisy online TTT was 48.80% vs. 48.95%. Both gaps are
--0.15 percentage points. The local run used CPU and the published run used
-MPS; the cause of the differences was not isolated. Exact online accuracy
-reproduction did not pass, but the evaluation behavior checks passed.
-
-Saved evidence: `results/ttt_exp_b_independent_replay.csv`. Use the membership
-and configuration at revision `339978d` for the 2,000-image replay; for each
-clean/noisy condition load a fresh checkpoint, use batch size 1 and no shuffle,
-and call the published `evaluate_condition` on CPU. Use the supervised
-checkpoint only for supervised frozen and the joint checkpoint for the other
-three conditions.
-
-**Submission:** This checklist and unresolved-issues record, the data and
-evaluation scripts in `src/`, the corrected notebook, the two saved pilot
-manifests, and the trained Experiment B replay CSV. No teammate files are
-needed to submit the smoke-check assignment.
+The submission includes the checklist above, the checking scripts, both
+pilot image lists, Nguyen's review copy, and Tuong's replay CSV. The two
+follow-ups are applying the fixes to Nguyen's original notebook and checking
+his trained accuracy if the saved weights become available.

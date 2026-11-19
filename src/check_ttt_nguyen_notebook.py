@@ -19,7 +19,7 @@ from torchvision.datasets import CIFAR10
 from src.ttt_evaluation import cifar10c_image
 
 REVIEWED_SOURCE_SHA256 = "72ecb10b08a32a2ad0add11a9905f75ad6d28afb0a639e0a9519f2b2805c7197"
-REVIEW_COPY_SHA256 = "1346c2f181301f11ee227ed92e822de62f2394b734422c2aa004efe7e5eca1dd"
+REVIEW_COPY_SHA256 = "8e7b9d19cc596fc5079643f51a48d7e3f682c51bd059ee19a70b4711b444d770"
 
 
 def load_reviewed_definitions(path):

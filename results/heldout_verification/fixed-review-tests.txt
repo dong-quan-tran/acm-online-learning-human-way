@@ -1,0 +1,21 @@
+Fixed-configuration review checks
+
+$ python -m pytest tests/test_ttt_evaluation.py -q
+....                                                                     [100%]
+4 passed in 4.88s
+
+$ python -m src.check_ttt_nguyen_notebook notebooks/nguyen-expa-evaluation-review.ipynb
+Model: random initialization
+PASS: severity-5 labels align; 2000 development / 8000 eval, zero overlap
+Smoke source rows: [0, 2]
+PASS: clean episodic: two predictions, expected state behavior, independent rerun
+PASS: clean online: two predictions, expected state behavior, independent rerun
+PASS: severity-5 episodic: two predictions, expected state behavior, independent rerun
+PASS: severity-5 online: two predictions, expected state behavior, independent rerun
+PASS: invalid order rejected: [0, 0]
+PASS: invalid order rejected: [0]
+PASS: invalid order rejected: [0, 2]
+PASS: invalid order rejected: [0.0, 1.0]
+PASS: adaptation runner has no class-label parameter
+
+The smoke check uses untrained weights to verify behavior. Independent trained-run verification is UNVERIFIED.

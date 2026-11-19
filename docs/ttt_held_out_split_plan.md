@@ -33,7 +33,23 @@ reproduce the trained results.
 | Same starting checkpoint, independent stream runs and carry-forward | **PASS in code and fixture.** Both streams receive the same joint model, copy it, and start a new optimizer. One optimizer per online stream persisted through 8,000 steps in the fixture. **UNVERIFIED as an independent trained replay.** | **PASS with trained weights.** The local runs used the same joint checkpoint for both streams and carried updates through 205 and 1,500 images. |
 | Trained accuracy | **Reported in saved notebook. Independent reproduction UNVERIFIED.** | **PASS for evaluation QA.** Local CPU replay and published GPU results show the same noisy-stream trade-off. Exact scores can differ. |
 
-## Nguyen's split and settings
+## Nguyen's fixed configuration
+
+Use the [fixed-configuration review notebook](../notebooks/nguyen-expa-evaluation-review.ipynb)
+for Experiment A. The adaptation loop takes its settings directly from the
+config. The 2,000-image monitor only scores predictions.
+
+| Setting | Episodic TTT | Online TTT |
+| --- | --- | --- |
+| SGD learning rate | 0.001 | 0.001 |
+| Steps per image | 10 | 1 |
+| State between images | Reset to the joint checkpoint | Carry forward |
+
+Both modes use 32 rotation examples per image and SGD momentum 0. The
+published run used these settings on CIFAR-10-C Gaussian noise at severity 5.
+The review copy uses the same split and settings and keeps the stricter
+stream-order check. The reported scores below come from the executed
+notebook, and the review copy has no execution outputs.
 
 All 12 code cells in the public [Kaggle version 2](https://www.kaggle.com/code/vunguyenledinh/notebook9e2b34c05b)
 match the [executed GitHub notebook at 64ae8d1](https://github.com/dong-quan-tran/acm-online-learning-human-way/blob/64ae8d1/notebooks/nguyen-expa.ipynb).
@@ -49,14 +65,6 @@ online runner. It is a reconstruction, not the original run's splits.npz.
 - Cell 4 pairs clean CIFAR-10 with Gaussian noise severity 5 using the same
   test row and checks the corruption label block against the clean labels.
   The input is RGB CHW scaled by 255, followed by model normalization.
-- The [earlier notebook at f2aa445](https://github.com/dong-quan-tran/acm-online-learning-human-way/blob/f2aa445/notebooks/nguyen-expa.ipynb)
-  uses the same 2,000 source IDs in TDEV. Cell 14 compares online learning
-  rates on all 2,000 and episodic learning rates and step counts on a
-  500-image prefix. The saved winners were online 0.003 / one step and
-  episodic 0.01 / ten steps. The adopted run used 0.001 for both with the
-  same step counts. The historical exposure is confirmed. The current code
-  has no sweep and there is no evidence it selected settings using the
-  monitor. The earlier exposure limits claims about an untouched test set.
 - Cells 8 and 10 choose the starting checkpoint by classification accuracy
   on the separate source development images. The saved log shows 30 source
   epochs for each model. No evidence shows the test-derived quiz selected
@@ -68,6 +76,12 @@ online runner. It is a reconstruction, not the original run's splits.npz.
   averages. Dropout is off during scoring. The online path does not reset
   after a monitor call. One update per adaptation image, augmentation seed
   100, 32 rotation examples, and SGD momentum 0 are recorded for this run.
+
+**Historical reuse.** The [earlier notebook at f2aa445](https://github.com/dong-quan-tran/acm-online-learning-human-way/blob/f2aa445/notebooks/nguyen-expa.ipynb)
+used these same 2,000 IDs to compare online learning rates. It also used a
+500-image subset for the episodic learning-rate and step-count sweep.
+Treat the fixed monitor as a reused development-set result. The archived
+audit retains the earlier tuning evidence.
 
 ### Trained scores reported in Nguyen's notebook
 
